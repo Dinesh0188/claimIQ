@@ -1,0 +1,259 @@
+"""Provider-agnostic LLM client with schema-validated output.
+
+Three things this does that a bare `client.chat.completions.create` does not:
+
+1. Verifies the configured model actually exists before the demo depends on it.
+2. Coerces output into a Pydantic model, re-prompting with the validation error
+   when the model gets the shape wrong (bounded -- it gives up rather than looping).
+3. Caches on a content hash, so a repeated demo is instant and free.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import time
+from functools import lru_cache
+from typing import Any, TypeVar
+
+from diskcache import Cache
+from openai import OpenAI
+from pydantic import BaseModel, ValidationError
+
+from claimiq.config import ROOT, settings
+from claimiq.providers import Provider, active_provider
+
+T = TypeVar("T", bound=BaseModel)
+
+_cache = Cache(str(ROOT / ".cache" / "llm"))
+
+# A long bill table is a long JSON document. Leaving this to the provider default
+# is what produced "max completion tokens reached before generating a valid
+# document" on the 37-row bill.
+MAX_COMPLETION_TOKENS = 8000
+RATE_LIMIT_RETRIES = 3
+RATE_LIMIT_BACKOFF = 4.0  # seconds, multiplied by attempt number
+
+
+class LLMUnavailable(RuntimeError):
+    """No usable key/model. Callers fall back to deterministic text."""
+
+
+class LLMCall(BaseModel):
+    """One instrumented call, surfaced in the Trace screen."""
+
+    node: str
+    model: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    latency_ms: int = 0
+    cached: bool = False
+    attempts: int = 1
+
+
+class LLMClient:
+    def __init__(self, provider: Provider | None = None) -> None:
+        if not settings().ai_enabled:
+            raise LLMUnavailable("AI_ENABLED is false. Running deterministic-only.")
+
+        self.provider = provider or active_provider()
+        if not self.provider.usable:
+            raise LLMUnavailable(
+                f"provider {self.provider.name!r} has no API key. "
+                "Set one in providers.json, or LLM_API_KEY in .env."
+            )
+
+        self._client = OpenAI(
+            base_url=self.provider.base_url, api_key=self.provider.api_key, timeout=90.0
+        )
+        self.model = self.provider.model
+        self.vision_model = self.provider.vision_model
+        self.calls: list[LLMCall] = []
+
+    @property
+    def has_vision(self) -> bool:
+        return self.provider.has_vision
+
+    # --- model verification ------------------------------------------------
+
+    def verify_models(self) -> list[str]:
+        """Check configured model IDs against the provider's live catalog.
+
+        Groq deprecated llama-3.3-70b-versatile and llama-3.1-8b-instant on
+        2026-06-17. Hardcoding a model ID is how a demo dies on a 404, so we ask.
+        Returns human-readable warnings; empty list means all good.
+        """
+        try:
+            available = sorted(m.id for m in self._client.models.list().data)
+        except Exception as exc:  # network/auth -- report, don't crash the app
+            return [f"Could not reach {self.provider.base_url} to list models: {exc}"]
+
+        warnings = []
+        for label, model_id in (("model", self.model), ("vision_model", self.vision_model)):
+            if not model_id or model_id in available:
+                continue
+            # Suggest near-misses. The submitted id "google/gemma-4-31b:free" was one
+            # "-it" away from a real model, and a bare 404 would not have said so.
+            stem = model_id.split("/")[-1].split(":")[0].rstrip("-it")
+            close = [m for m in available if stem and stem in m][:6]
+            hint = f" Did you mean: {', '.join(close)}?" if close else ""
+            warnings.append(
+                f"{self.provider.name}: {label}={model_id!r} is not available.{hint}"
+            )
+        return warnings
+
+    # --- structured generation ---------------------------------------------
+
+    def structured(
+        self,
+        *,
+        node: str,
+        system: str,
+        user: str,
+        schema: type[T],
+        images: list[str] | None = None,
+        temperature: float = 0.0,
+        max_retries: int = 2,
+    ) -> T:
+        """Generate JSON conforming to `schema`, re-prompting on validation failure."""
+        if images and not self.vision_model:
+            raise LLMUnavailable(
+                f"provider {self.provider.name!r} has no vision model configured, so it "
+                "cannot read scanned documents. Native PDFs still parse via the text layer."
+            )
+
+        model = self.vision_model if images else self.model
+        key = _cache_key(model, system, user, schema.__name__, images)
+
+        cached = _cache.get(key)
+        if cached is not None:
+            self.calls.append(LLMCall(node=node, model=model, cached=True))
+            return schema.model_validate_json(cached)
+
+        messages: list[dict[str, Any]] = [
+            {
+                "role": "system",
+                "content": f"{system}\n\nReply with JSON only, matching this schema:\n"
+                f"{json.dumps(schema.model_json_schema())}",
+            },
+            {"role": "user", "content": _user_content(user, images)},
+        ]
+
+        started = time.perf_counter()
+        last_error: Exception | None = None
+
+        for attempt in range(1, max_retries + 2):
+            raw, usage = self._complete(model, messages, temperature)
+            try:
+                parsed = schema.model_validate_json(_json_only(raw))
+            except ValidationError as exc:
+                last_error = exc
+                # Targeted repair: show the model exactly what was wrong rather than
+                # retrying the identical prompt and hoping.
+                messages += [
+                    {"role": "assistant", "content": raw},
+                    {
+                        "role": "user",
+                        "content": f"That did not validate:\n{exc}\nReturn corrected JSON only.",
+                    },
+                ]
+                continue
+
+            self.calls.append(
+                LLMCall(
+                    node=node,
+                    model=model,
+                    prompt_tokens=usage[0],
+                    completion_tokens=usage[1],
+                    latency_ms=int((time.perf_counter() - started) * 1000),
+                    attempts=attempt,
+                )
+            )
+            _cache.set(key, parsed.model_dump_json())
+            return parsed
+
+        raise LLMUnavailable(f"{schema.__name__} did not validate after {max_retries + 1} attempts: {last_error}")
+
+    def _complete(
+        self,
+        model: str,
+        messages: list[dict[str, Any]],
+        temperature: float,
+        max_tokens: int = MAX_COMPLETION_TOKENS,
+    ) -> tuple[str, tuple[int, int]]:
+        for attempt in range(RATE_LIMIT_RETRIES + 1):
+            try:
+                response = self._client.chat.completions.create(
+                    model=model,
+                    messages=messages,  # type: ignore[arg-type]
+                    temperature=temperature,
+                    # Without this the provider's default ceiling truncates long
+                    # structured output mid-document and returns
+                    # "max completion tokens reached before generating a valid
+                    # document" -- which reads like the model failing when it is
+                    # actually a budget we never set.
+                    max_tokens=max_tokens,
+                    # Not universally supported. Sending it to a provider that lacks
+                    # it fails the whole request, so it is declared per provider and
+                    # we lean on the prompt + validation retry when it is absent.
+                    **(
+                        {"response_format": {"type": "json_object"}}
+                        if self.provider.supports_json_mode
+                        else {}
+                    ),
+                )
+            except Exception as exc:  # noqa: BLE001
+                if "rate_limit" not in str(exc).lower() or attempt == RATE_LIMIT_RETRIES:
+                    raise
+                time.sleep(RATE_LIMIT_BACKOFF * (attempt + 1))
+                continue
+
+            usage = response.usage
+            return (
+                response.choices[0].message.content or "",
+                (usage.prompt_tokens, usage.completion_tokens) if usage else (0, 0),
+            )
+
+        raise LLMUnavailable("rate limited beyond retry budget")
+
+
+def _json_only(raw: str) -> str:
+    """Pull the JSON object out of a reply.
+
+    Models without JSON mode wrap output in ```json fences or add a sentence of
+    preamble. Rather than fail validation and burn a retry on something this
+    mechanical, slice from the first brace to the last.
+    """
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text.split("```")[1] if "```" in text[3:] else text[3:]
+        if text.lstrip().lower().startswith("json"):
+            text = text.lstrip()[4:]
+    start, end = text.find("{"), text.rfind("}")
+    return text[start : end + 1] if 0 <= start < end else text.strip()
+
+
+def _user_content(text: str, images: list[str] | None) -> Any:
+    if not images:
+        return text
+    return [{"type": "text", "text": text}] + [
+        {"type": "image_url", "image_url": {"url": img}} for img in images
+    ]
+
+
+def _cache_key(model: str, system: str, user: str, schema: str, images: list[str] | None) -> str:
+    blob = "|".join([model, system, user, schema, *(images or [])])
+    return hashlib.sha256(blob.encode()).hexdigest()
+
+
+@lru_cache(maxsize=1)
+def try_client() -> LLMClient | None:
+    """Return the shared client, or None if AI is off/unconfigured.
+
+    Cached deliberately: the trace reads `client.calls` to attribute tokens and
+    latency to nodes, which only works if every caller holds the same instance.
+    """
+    try:
+        return LLMClient()
+    except LLMUnavailable:
+        return None

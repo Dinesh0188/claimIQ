@@ -1,0 +1,45 @@
+{
+  "claim_id": "SYNTHETIC-INCOMPLETE-004",
+  "context": {
+    "claim_type": "reimbursement",
+    "admission_date": "2026-05-10",
+    "discharge_date": "2026-05-14",
+    "primary_diagnosis": "Road traffic accident with compound fracture of right tibia",
+    "procedure_performed": "Open reduction and internal fixation",
+    "is_accident": true,
+    "is_maternity": false,
+    "involves_implant": true,
+    "is_ped_related": false,
+    "preauth_approved_amount": "100000",
+    "documents_attached": ["DOC-CLAIM-FORM", "DOC-FINAL-BILL"]
+  },
+  "policy": {
+    "policy_id": "SYNTH-POL-9210",
+    "sum_insured": "300000",
+    "balance_sum_insured": "300000",
+    "room_rent_cap_per_day": "6000",
+    "icu_cap_per_day": "12000",
+    "copay_percent": "20",
+    "deductible": "0",
+    "procedure_sublimits": {},
+    "policy_inception_date": "2025-11-01"
+  },
+  "room_stay": {"room_category": "General Ward", "rate_per_day": "2500", "days": 4, "is_icu": false},
+  "line_items": [
+    {"line_no": 1,  "description": "Room charges - General Ward", "head": "ROOM",          "quantity": "4", "unit_rate": "2500",  "amount": "10000", "service_date": "2026-05-10"},
+    {"line_no": 2,  "description": "Surgeon fee - ORIF",          "head": "PROCEDURE",     "quantity": "1", "unit_rate": "45000", "amount": "45000", "service_date": "2026-05-11"},
+    {"line_no": 3,  "description": "OT charges",                  "head": "PROCEDURE",     "quantity": "1", "unit_rate": "20000", "amount": "20000", "service_date": "2026-05-11"},
+    {"line_no": 4,  "description": "Anaesthetist charges",        "head": "PROCEDURE",     "quantity": "1", "unit_rate": "12000", "amount": "12000", "service_date": "2026-05-11"},
+    {"line_no": 5,  "description": "Radiology and lab",           "head": "INVESTIGATION", "quantity": "1", "unit_rate": "22000", "amount": "22000", "service_date": "2026-05-10"},
+    {"line_no": 6,  "description": "Pharmacy - inpatient",        "head": "PHARMACY",      "quantity": "1", "unit_rate": "29000", "amount": "29000", "service_date": "2026-05-12"},
+    {"line_no": 7,  "description": "Pharmacy - discharge meds",   "head": "PHARMACY",      "quantity": "1", "unit_rate": "6000",  "amount": "6000",  "service_date": "2026-05-16"},
+    {"line_no": 8,  "description": "Nursing charges",             "head": "NURSING",       "quantity": "4", "unit_rate": "1500",  "amount": "6000",  "service_date": "2026-05-10"},
+    {"line_no": 9,  "description": "Physiotherapy",               "head": "PROCEDURE",     "quantity": "5", "unit_rate": "1000",  "amount": "5000",  "service_date": "2026-05-13"},
+    {"line_no": 10, "description": "Tibial plate and screws",     "head": "IMPLANT",       "quantity": "1", "unit_rate": "8000",  "amount": "8000",  "service_date": "2026-05-11"},
+
+    {"line_no": 11, "description": "ATTENDER FOOD CHRG",          "head": "OTHER", "quantity": "4", "unit_rate": "300", "amount": "1200", "service_date": "2026-05-11"},
+    {"line_no": 12, "description": "GOWN-PT 2NOS",                "head": "OTHER", "quantity": "2", "unit_rate": "150", "amount": "300",  "service_date": "2026-05-10"},
+    {"line_no": 13, "description": "OT DRAPE STERILE 4NOS",       "head": "OTHER", "quantity": "3", "unit_rate": "300", "amount": "900",  "service_date": "2026-05-11"},
+    {"line_no": 14, "description": "REGN CHARGES",                "head": "OTHER", "quantity": "1", "unit_rate": "400", "amount": "400",  "service_date": "2026-05-10"}
+  ]
+}

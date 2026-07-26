@@ -1,0 +1,77 @@
+{
+  "claim_id": "SYNTHETIC-CARDIAC-001",
+  "nodes": [
+    {
+      "node": "classify",
+      "started_at": "2026-07-26T12:24:10.445107+00:00",
+      "latency_ms": 104,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "llm_calls": 0,
+      "cache_hits": 0,
+      "attempts": 1,
+      "note": "",
+      "error": ""
+    },
+    {
+      "node": "compute",
+      "started_at": "2026-07-26T12:24:10.547374+00:00",
+      "latency_ms": 0,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "llm_calls": 0,
+      "cache_hits": 0,
+      "attempts": 1,
+      "note": "",
+      "error": ""
+    },
+    {
+      "node": "readiness",
+      "started_at": "2026-07-26T12:24:10.551594+00:00",
+      "latency_ms": 0,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "llm_calls": 0,
+      "cache_hits": 0,
+      "attempts": 1,
+      "note": "",
+      "error": ""
+    },
+    {
+      "node": "explain",
+      "started_at": "2026-07-26T12:24:10.551594+00:00",
+      "latency_ms": 0,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "llm_calls": 0,
+      "cache_hits": 0,
+      "attempts": 1,
+      "note": "",
+      "error": ""
+    },
+    {
+      "node": "verify",
+      "started_at": "2026-07-26T12:24:10.554110+00:00",
+      "latency_ms": 0,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "llm_calls": 0,
+      "cache_hits": 0,
+      "attempts": 1,
+      "note": "",
+      "error": ""
+    },
+    {
+      "node": "report",
+      "started_at": "2026-07-26T12:24:10.559166+00:00",
+      "latency_ms": 0,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "llm_calls": 0,
+      "cache_hits": 0,
+      "attempts": 1,
+      "note": "",
+      "error": ""
+    }
+  ]
+}

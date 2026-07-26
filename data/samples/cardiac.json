@@ -1,0 +1,68 @@
+{
+  "claim_id": "SYNTHETIC-CARDIAC-001",
+  "context": {
+    "claim_type": "cashless",
+    "admission_date": "2026-06-14",
+    "discharge_date": "2026-06-22",
+    "primary_diagnosis": "Triple vessel coronary artery disease",
+    "procedure_performed": "Coronary artery bypass graft (CABG)",
+    "is_accident": false,
+    "is_maternity": false,
+    "involves_implant": true,
+    "is_ped_related": false,
+    "preauth_approved_amount": "350000",
+    "documents_attached": [
+      "DOC-CLAIM-FORM",
+      "DOC-DISCHARGE-SUMMARY",
+      "DOC-FINAL-BILL",
+      "DOC-ID-PROOF"
+    ]
+  },
+  "policy": {
+    "policy_id": "SYNTH-POL-4471",
+    "sum_insured": "500000",
+    "balance_sum_insured": "500000",
+    "room_rent_cap_per_day": "6000",
+    "icu_cap_per_day": "12000",
+    "copay_percent": "10",
+    "deductible": "0",
+    "procedure_sublimits": {},
+    "policy_inception_date": "2021-04-01"
+  },
+  "room_stay": {
+    "room_category": "Single AC",
+    "rate_per_day": "12000",
+    "days": 8,
+    "is_icu": false
+  },
+  "line_items": [
+    {"line_no": 1,  "description": "Room charges - Single AC",        "head": "ROOM",          "quantity": "8", "unit_rate": "12000", "amount": "96000"},
+    {"line_no": 2,  "description": "Nursing charges",                 "head": "NURSING",       "quantity": "8", "unit_rate": "2000",  "amount": "16000"},
+    {"line_no": 3,  "description": "Surgeon fee - CABG",              "head": "PROCEDURE",     "quantity": "1", "unit_rate": "90000", "amount": "90000"},
+    {"line_no": 4,  "description": "OT charges",                      "head": "PROCEDURE",     "quantity": "1", "unit_rate": "55000", "amount": "55000"},
+    {"line_no": 5,  "description": "Anaesthetist charges",            "head": "PROCEDURE",     "quantity": "1", "unit_rate": "25000", "amount": "25000"},
+    {"line_no": 6,  "description": "Investigations - lab and imaging","head": "INVESTIGATION", "quantity": "1", "unit_rate": "38000", "amount": "38000"},
+    {"line_no": 7,  "description": "Pharmacy and consumables",        "head": "PHARMACY",      "quantity": "1", "unit_rate": "52000", "amount": "52000"},
+    {"line_no": 8,  "description": "Vascular graft (implant)",        "head": "IMPLANT",       "quantity": "1", "unit_rate": "18000", "amount": "18000"},
+    {"line_no": 9,  "description": "Doctor visit charges",            "head": "CONSULTATION",  "quantity": "8", "unit_rate": "1000",  "amount": "8000"},
+
+    {"line_no": 10, "description": "Attendant food charges",          "head": "OTHER", "quantity": "8", "unit_rate": "300", "amount": "2400"},
+    {"line_no": 11, "description": "Telephone charges",               "head": "OTHER", "quantity": "1", "unit_rate": "600", "amount": "600"},
+    {"line_no": 12, "description": "Laundry charges",                 "head": "OTHER", "quantity": "1", "unit_rate": "800", "amount": "800"},
+    {"line_no": 13, "description": "Toiletries kit",                  "head": "OTHER", "quantity": "1", "unit_rate": "450", "amount": "450"},
+
+    {"line_no": 14, "description": "Patient gown",                    "head": "OTHER", "quantity": "2", "unit_rate": "175", "amount": "350"},
+    {"line_no": 15, "description": "Bed pan",                         "head": "OTHER", "quantity": "1", "unit_rate": "200", "amount": "200"},
+    {"line_no": 16, "description": "Hand wash and sanitizer",         "head": "OTHER", "quantity": "4", "unit_rate": "120", "amount": "480"},
+    {"line_no": 17, "description": "Slippers",                        "head": "OTHER", "quantity": "1", "unit_rate": "150", "amount": "150"},
+
+    {"line_no": 18, "description": "Surgical drapes",                 "head": "OTHER", "quantity": "6", "unit_rate": "300", "amount": "1800"},
+    {"line_no": 19, "description": "Sterile gloves (OT)",             "head": "OTHER", "quantity": "20","unit_rate": "70",  "amount": "1400"},
+
+    {"line_no": 20, "description": "Registration fee",                "head": "OTHER", "quantity": "1", "unit_rate": "500", "amount": "500"},
+    {"line_no": 21, "description": "Medical records / file charges",  "head": "OTHER", "quantity": "1", "unit_rate": "300", "amount": "300"},
+    {"line_no": 22, "description": "Service charges",                 "head": "OTHER", "quantity": "1", "unit_rate": "1200","amount": "1200"},
+
+    {"line_no": 23, "description": "MISC-CONS CHG",                   "head": "OTHER", "quantity": "1", "unit_rate": "1370","amount": "1370"}
+  ]
+}

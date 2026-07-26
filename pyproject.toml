@@ -1,0 +1,20 @@
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = [
+    "E501",  # long lines are usually explanatory comments here
+    "B008",  # FastAPI's Depends/File defaults are the documented idiom
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Scripts and UI pages run top-to-bottom and need sys.path set before importing
+# the package, so imports legitimately follow statements.
+"scripts/*" = ["E402"]
+"ui/*" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

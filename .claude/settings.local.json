@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(python --version)",
+      "PowerShell(py --version)",
+      "PowerShell(& \"C:\\\\Users\\\\DINESH-1\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python312\\\\python.exe\" -m pip --version)",
+      "PowerShell(& \"C:\\\\Users\\\\DINESH-1\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python312\\\\python.exe\" -m pip list 2>$null)"
+    ]
+  }
+}

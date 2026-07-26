@@ -1,0 +1,74 @@
+{
+  "claim_id": "SYNTHETIC-BILLING-ERROR-003",
+  "context": {
+    "claim_type": "cashless",
+    "admission_date": "2026-04-12",
+    "discharge_date": "2026-04-17",
+    "primary_diagnosis": "Primary osteoarthritis of the right knee",
+    "procedure_performed": "Total knee replacement",
+    "is_accident": false,
+    "is_maternity": false,
+    "involves_implant": true,
+    "is_ped_related": false,
+    "preauth_approved_amount": "450000",
+    "documents_attached": [
+      "DOC-CLAIM-FORM", "DOC-DISCHARGE-SUMMARY", "DOC-FINAL-BILL", "DOC-ID-PROOF",
+      "DOC-IMPLANT-INV", "DOC-INVESTIGATION-REPORTS", "DOC-OT-NOTES",
+      "DOC-PHARMACY-BILLS", "DOC-INDOOR-PAPERS"
+    ]
+  },
+  "policy": {
+    "policy_id": "SYNTH-POL-7734",
+    "sum_insured": "800000",
+    "balance_sum_insured": "800000",
+    "room_rent_cap_per_day": "6000",
+    "icu_cap_per_day": "12000",
+    "copay_percent": "0",
+    "deductible": "0",
+    "procedure_sublimits": {},
+    "policy_inception_date": "2017-01-20"
+  },
+  "room_stay": {"room_category": "Single AC", "rate_per_day": "5500", "days": 5, "is_icu": false},
+  "line_items": [
+    {"line_no": 1,  "description": "Room charges - Single AC",       "head": "ROOM",          "quantity": "5", "unit_rate": "5500",   "amount": "27500"},
+    {"line_no": 2,  "description": "Surgeon fee - TKR",              "head": "PROCEDURE",     "quantity": "1", "unit_rate": "120000", "amount": "120000"},
+    {"line_no": 3,  "description": "OT charges",                     "head": "PROCEDURE",     "quantity": "1", "unit_rate": "45000",  "amount": "45000"},
+    {"line_no": 4,  "description": "Anaesthetist charges",           "head": "PROCEDURE",     "quantity": "1", "unit_rate": "25000",  "amount": "25000"},
+    {"line_no": 5,  "description": "Knee prosthesis (implant)",      "head": "IMPLANT",       "quantity": "1", "unit_rate": "145000", "amount": "145000"},
+    {"line_no": 6,  "description": "Pharmacy and drugs",             "head": "PHARMACY",      "quantity": "1", "unit_rate": "38000",  "amount": "38000"},
+    {"line_no": 7,  "description": "Radiology and lab",              "head": "INVESTIGATION", "quantity": "1", "unit_rate": "18000",  "amount": "18000"},
+    {"line_no": 8,  "description": "Nursing charges",                "head": "NURSING",       "quantity": "5", "unit_rate": "2400",   "amount": "12000"},
+    {"line_no": 9,  "description": "Physiotherapy sessions",         "head": "PROCEDURE",     "quantity": "8", "unit_rate": "1000",   "amount": "8000"},
+
+    {"line_no": 10, "description": "PATIENT GOWN DISPOSABLE",        "head": "OTHER", "quantity": "4",  "unit_rate": "100", "amount": "400"},
+    {"line_no": 11, "description": "Slippers",                       "head": "OTHER", "quantity": "1",  "unit_rate": "200", "amount": "200"},
+    {"line_no": 12, "description": "TISSUE ROLL 2PLY",               "head": "OTHER", "quantity": "3",  "unit_rate": "100", "amount": "300"},
+    {"line_no": 13, "description": "HAND WASH LIQUID 500ML",         "head": "OTHER", "quantity": "2",  "unit_rate": "300", "amount": "600"},
+    {"line_no": 14, "description": "BEDPAN SS",                      "head": "OTHER", "quantity": "1",  "unit_rate": "250", "amount": "250"},
+    {"line_no": 15, "description": "TOOTH BRUSH AND PASTE SET",      "head": "OTHER", "quantity": "1",  "unit_rate": "350", "amount": "350"},
+    {"line_no": 16, "description": "SHOE COVER 20NOS",               "head": "OTHER", "quantity": "20", "unit_rate": "22.5","amount": "450"},
+    {"line_no": 17, "description": "SURGICAL MASK 3PLY WARD",        "head": "OTHER", "quantity": "40", "unit_rate": "20",  "amount": "800"},
+    {"line_no": 18, "description": "LINEN CHARGES PER DAY",          "head": "OTHER", "quantity": "5",  "unit_rate": "240", "amount": "1200"},
+    {"line_no": 19, "description": "HK CHARGES",                     "head": "OTHER", "quantity": "5",  "unit_rate": "300", "amount": "1500"},
+    {"line_no": 20, "description": "Admission kit",                  "head": "OTHER", "quantity": "1",  "unit_rate": "600", "amount": "600"},
+    {"line_no": 21, "description": "ID BAND WRIST",                  "head": "OTHER", "quantity": "1",  "unit_rate": "100", "amount": "100"},
+    {"line_no": 22, "description": "PULSE OXIMETER MONITORING",      "head": "OTHER", "quantity": "5",  "unit_rate": "180", "amount": "900"},
+    {"line_no": 23, "description": "Documentation charges",          "head": "OTHER", "quantity": "1",  "unit_rate": "700", "amount": "700"},
+
+    {"line_no": 24, "description": "OT DRAPE STERILE 4NOS",          "head": "OTHER", "quantity": "4",  "unit_rate": "600", "amount": "2400"},
+    {"line_no": 25, "description": "STRL GLV 7.5",                   "head": "OTHER", "quantity": "24", "unit_rate": "75",  "amount": "1800"},
+    {"line_no": 26, "description": "GAUZE SWAB 10X10",               "head": "OTHER", "quantity": "1",  "unit_rate": "1200","amount": "1200"},
+    {"line_no": 27, "description": "COTTON ROLL 500GM",              "head": "OTHER", "quantity": "1",  "unit_rate": "700", "amount": "700"},
+    {"line_no": 28, "description": "MICROPORE 2INCH",                "head": "OTHER", "quantity": "1",  "unit_rate": "500", "amount": "500"},
+    {"line_no": 29, "description": "CSSD CHARGES",                   "head": "OTHER", "quantity": "1",  "unit_rate": "3000","amount": "3000"},
+    {"line_no": 30, "description": "SURGICAL BLADE NO 15",           "head": "OTHER", "quantity": "6",  "unit_rate": "150", "amount": "900"},
+    {"line_no": 31, "description": "Orthobundle",                    "head": "OTHER", "quantity": "1",  "unit_rate": "1500","amount": "1500"},
+    {"line_no": 32, "description": "Tourniquet",                     "head": "OTHER", "quantity": "1",  "unit_rate": "400", "amount": "400"},
+
+    {"line_no": 33, "description": "REGN CHARGES",                   "head": "OTHER", "quantity": "1",  "unit_rate": "600", "amount": "600"},
+    {"line_no": 34, "description": "MRD CHARGES",                    "head": "OTHER", "quantity": "1",  "unit_rate": "400", "amount": "400"},
+    {"line_no": 35, "description": "SERVICE CHRG 5PCT",              "head": "OTHER", "quantity": "1",  "unit_rate": "1800","amount": "1800"},
+    {"line_no": 36, "description": "ALCOHOL SWAB 100S",              "head": "OTHER", "quantity": "3",  "unit_rate": "100", "amount": "300"},
+    {"line_no": 37, "description": "BETADINE 500ML",                 "head": "OTHER", "quantity": "1",  "unit_rate": "450", "amount": "450"}
+  ]
+}

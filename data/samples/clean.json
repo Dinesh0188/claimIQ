@@ -1,0 +1,41 @@
+{
+  "claim_id": "SYNTHETIC-CLEAN-002",
+  "context": {
+    "claim_type": "cashless",
+    "admission_date": "2026-05-04",
+    "discharge_date": "2026-05-07",
+    "primary_diagnosis": "Acute appendicitis",
+    "procedure_performed": "Laparoscopic appendectomy",
+    "is_accident": false,
+    "is_maternity": false,
+    "involves_implant": false,
+    "is_ped_related": false,
+    "preauth_approved_amount": "95000",
+    "documents_attached": [
+      "DOC-CLAIM-FORM", "DOC-DISCHARGE-SUMMARY", "DOC-FINAL-BILL", "DOC-ID-PROOF",
+      "DOC-INVESTIGATION-REPORTS", "DOC-OT-NOTES", "DOC-PHARMACY-BILLS"
+    ]
+  },
+  "policy": {
+    "policy_id": "SYNTH-POL-1102",
+    "sum_insured": "500000",
+    "balance_sum_insured": "500000",
+    "room_rent_cap_per_day": "6000",
+    "icu_cap_per_day": "12000",
+    "copay_percent": "0",
+    "deductible": "0",
+    "procedure_sublimits": {},
+    "policy_inception_date": "2019-08-15"
+  },
+  "room_stay": {"room_category": "Twin Sharing", "rate_per_day": "4000", "days": 3, "is_icu": false},
+  "line_items": [
+    {"line_no": 1, "description": "Room charges - Twin Sharing", "head": "ROOM",          "quantity": "3", "unit_rate": "4000",  "amount": "12000"},
+    {"line_no": 2, "description": "Nursing charges",             "head": "NURSING",       "quantity": "3", "unit_rate": "1000",  "amount": "3000"},
+    {"line_no": 3, "description": "Surgeon fee - appendectomy",  "head": "PROCEDURE",     "quantity": "1", "unit_rate": "35000", "amount": "35000"},
+    {"line_no": 4, "description": "OT charges",                  "head": "PROCEDURE",     "quantity": "1", "unit_rate": "15000", "amount": "15000"},
+    {"line_no": 5, "description": "Anaesthetist charges",        "head": "PROCEDURE",     "quantity": "1", "unit_rate": "8000",  "amount": "8000"},
+    {"line_no": 6, "description": "Laboratory investigations",   "head": "INVESTIGATION", "quantity": "1", "unit_rate": "6000",  "amount": "6000"},
+    {"line_no": 7, "description": "Pharmacy",                    "head": "PHARMACY",      "quantity": "1", "unit_rate": "9000",  "amount": "9000"},
+    {"line_no": 8, "description": "Consultant visit charges",    "head": "CONSULTATION",  "quantity": "3", "unit_rate": "800",   "amount": "2400"}
+  ]
+}
