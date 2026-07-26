@@ -66,24 +66,20 @@ Audits the packet **before** it is submitted, and returns:
 ### The agent graph
 
 ```
-                    ClaimState (Pydantic) flows through every node
-
- [1] INGEST      PDF → rasterised pages + text layer          pypdfium2 / pdfplumber
- [2] EXTRACT     vision LLM → structured rows + confidence    qwen3.6-27b
- [3] NORMALIZE   abbreviation expansion, dedupe               pure python
- [4] CLASSIFY    BM25 + dense + RRF → LLM verdict + citation  rank_bm25 / fastembed / gpt-oss
- [5] RETRIEVE    policy clauses relevant to THIS claim        hybrid search
- [6] REASON      grounded coverage determination              gpt-oss-120b
- [7] COMPUTE ◄── TOOL CALL: deterministic waterfall           Decimal, 3 profiles
- [8] VERIFY      invariant · citations · number reconciliation
-       │
-       ╰── fail ──→ REPAIR: targeted re-prompt (max 2) ──→ back to [9]
- [9] EXPLAIN     clerk-readable narrative + action list
-[10] REPORT      audit PDF + persist to SQLite
+classify → compute → readiness → explain → verify ──┬──→ report → END
+                                     ↑              │
+                                     └── repair ────┘  (bounded, max 2)
 ```
+
+Six nodes. Ingestion, extraction and normalisation are real stages, but they run inside
+`extract_bill` before the graph starts — counting them as nodes would overstate the graph.
 
 The backward edge out of `verify` is the reason this is a graph rather than a chain, and
 it is the only reason LangGraph earns its dependency.
+
+**→ Full component walkthrough, node contracts, data flow, persistence design, all six
+prompts and the API surface: [ARCHITECTURE.md](ARCHITECTURE.md).** That document is the
+detailed reference; this section is orientation only.
 
 ### The load-bearing design decision
 
@@ -126,11 +122,12 @@ claimiq/
   retrieval/        corpus parser · hybrid search (BM25 + dense + RRF)
   tools/            waterfall · consistency · documents   ← all deterministic
   eval/             LLM-as-judge
+  providers.py      named provider profiles (Groq / OpenRouter / DeepSeek / OpenAI)
 corpus/             the rule + policy knowledge base (markdown, hand-authored)
 ui/                 Streamlit: Audit · Trace · Dashboard · Ask
 scripts/            index_corpus · gen_samples · gen_bill_pdf · seed_db
                     bench_retrieval · bench_classify · bench_extract · run_eval
-tests/              51 tests, offline, no key required
+tests/              59 tests, offline, no key required
 ```
 
 ---
@@ -143,8 +140,9 @@ tests/              51 tests, offline, no key required
 |---|---|---|---|
 | Orchestration | **LangGraph** | State machine with conditional edges; the `verify → explain` cycle needs real branching and bounded looping | A chain cannot express a cycle. Nodes stay pure functions so the framework is swappable in ~30 lines |
 | Reasoning LLM | **Groq `openai/gpt-oss-120b`** | Classification verdicts, coverage reasoning, narrative, text-to-SQL | Free tier, ~500 tok/s so a live demo never stalls, native JSON mode |
-| Vision LLM | **Groq `qwen/qwen3.6-27b`** | Reads scanned/photographed bills into structured rows | Replaces the entire OCR stack — no Tesseract binary to install |
-| Provider layer | **OpenAI SDK + swappable `base_url`** | Groq / DeepSeek / OpenAI behind one client | All three speak the same wire format; switching providers is one env var |
+| Scanned bills | **RapidOCR (onnxruntime) → text LLM** | Local OCR turns a scan into ~1,500 text tokens the chat model structures | Vision is billed a flat ~11,111 tokens/image against an 8,000/min free cap — one image exceeds the whole allowance. OCR is free, offline, no torch, no system binary |
+| Vision LLM | **Groq `qwen/qwen3.6-27b`** | Last-resort fallback when OCR and the text layer both fail | Unusable on the free tier (see above); the path exists and works on a paid tier |
+| Provider layer | **OpenAI SDK + `providers.json` profiles** | Groq / OpenRouter / DeepSeek / OpenAI behind one client, switchable live in the UI | All speak the same wire format. A file rather than env vars because four values must change together, and `supports_json_mode` differs per provider |
 | Structured output | **Pydantic + JSON mode + bounded retry** | Model output validated into typed objects; on failure it is re-prompted *with the validation error* | ~40 lines, no framework lock-in, works identically across all three providers |
 | Embeddings | **fastembed · BAAI/bge-small-en-v1.5** | Dense semantic retrieval over the rule corpus | ONNX runtime, ~130 MB, **no PyTorch**. sentence-transformers would mean a 2 GB install before anyone can clone and run |
 | Vector search | **numpy cosine** | Ranks 104 chunks in microseconds | A vector database at this scale is theatre. `np.dot` + argsort is 20 lines |
@@ -160,11 +158,11 @@ tests/              51 tests, offline, no key required
 | API | **FastAPI + uvicorn** | Real HTTP boundary. The UI never imports the engine, which keeps the API from being decorative |
 | Models | **Pydantic v2** | One schema definition serves validation, the API contract, and LLM structured output |
 | UI | **Streamlit + Plotly** | Four screens; the Plotly waterfall is the chart that makes the deduction legible |
-| Money | **`Decimal`, never float** | A claim auditor off by a paisa from binary floating point is worse than no auditor |
+| Money | **`Decimal`, never float** | A claim auditor off by a paisa from binary floating point is worse than no auditor. Persisted as **integer paise**, with rupee views for readers, so the guarantee survives storage |
 | Documents | **pdfplumber · pypdfium2 · reportlab** | Text layer / rasterisation / generating bills *and* rendering the audit report — one dependency doing two jobs |
-| Storage | **SQLite (stdlib)** | Portfolio persistence. Two tables, no ORM |
+| Storage | **SQLite (stdlib)** | Portfolio persistence. Three tables + two rupee views, no ORM |
 | Analytics | **pandas** | Aggregation for the dashboard |
-| Testing | **pytest, ruff** | 51 tests, offline, ~12s |
+| Testing | **pytest, ruff** | 59 tests, offline, ~12s |
 
 ### Deliberately rejected
 
@@ -174,9 +172,10 @@ tests/              51 tests, offline, no key required
 | sentence-transformers | Same embeddings as fastembed for 15× the install size |
 | Cross-encoder reranker | Means torch, for an unmeasured gain over RRF |
 | `simpleeval` / YAML rule DSL | Document conditions are a dozen Python predicates that read perfectly well as code. A DSL would add a parser *and* a sandbox-escape question in exchange for nothing |
-| pytesseract / OCR | Needs a system binary; the vision model covers it |
+| pytesseract, EasyOCR, PaddleOCR | Tesseract needs a system binary; the other two need PyTorch. RapidOCR runs on the onnxruntime fastembed already installs |
 | mypy strict, pre-commit, CI matrix | Ceremony at this size |
-| `instructor` | Pydantic + JSON mode + retry is 40 lines and provider-neutral |
+| `instructor` | Pydantic + JSON mode + retry is 40 lines and provider-neutral — and keeps per-provider capability differences visible instead of hidden until they break |
+| Postgres | 302 rows, one writer, embedded reads. See [ADR-003](DECISIONS.md) |
 
 ---
 
@@ -185,9 +184,16 @@ tests/              51 tests, offline, no key required
 Following `data/samples/cardiac.json` — CABG, 8 days, ₹12,000/day room against a
 ₹6,000 cap, gross **₹4,10,000**.
 
-**Ingest & extract.** If a PDF is uploaded, `pypdfium2` rasterises pages at ~144 dpi and
-the vision model returns rows with per-field confidence. Anything under 0.7 is flagged
-amber, not silently trusted. The text layer, when present, is passed as a hint.
+*Structural reference — node contracts, models, schema, prompts — is in
+[ARCHITECTURE.md](ARCHITECTURE.md). This section is the same system told as one claim.*
+
+**Ingest & extract.** Cheapest path that works, in order. A native PDF's ruled table is
+parsed directly by `pdfplumber` — no model, and measured at **100% row recall with exact
+bill totals**. A scan with no text layer goes to local RapidOCR, whose text the ordinary
+chat model structures. The vision model is the last resort, and on Groq's free tier it is
+effectively unavailable: a flat ~11,111 tokens per image against an 8,000/minute cap.
+Rows the extractor is unsure of carry confidence < 0.7 and are flagged amber, not silently
+trusted.
 
 **Classify.** Each line runs hybrid retrieval. `"STRL GLV 7.5"` → BM25 hits it on the
 alias token, dense hits it semantically, RRF ranks `L3-002` first. The LLM sees the item
@@ -235,7 +241,8 @@ engine never computed; the verifier caught it, re-prompted with that specific co
 and the second pass reconciled. The Trace screen shows `explain → verify → explain →
 verify → report`.
 
-**Report & persist.** Audit PDF stamped with the corpus version; a row into SQLite.
+**Report & persist.** Audit PDF stamped with the corpus version; a row into SQLite, with
+money stored as integer paise so the `Decimal` guarantee survives the storage boundary.
 
 **Portfolio.** Across 300 seeded claims the dashboard aggregates preventable hospital loss
 by cause, the top 10 recurring billing mistakes, and the most-missed documents. The Ask
@@ -524,7 +531,10 @@ CMD uvicorn claimiq.api:app --host 0.0.0.0 --port 8000 & \
 ### Architecture and AI engineering
 
 **1. Walk me through the architecture.**
-A ten-node LangGraph agent. A vision model extracts line items from the bill PDF; hybrid
+A six-node LangGraph agent — `classify → compute → readiness → explain → verify → report`,
+with a bounded `verify → explain` repair cycle. Ingestion, extraction and normalisation are
+real stages but they run inside `extract_bill` before the graph starts, so they are not
+nodes; describing them as such would overstate the graph. Hybrid
 retrieval over a rule corpus grounds each classification; an LLM issues verdicts that must
 cite the chunk they came from; a deterministic tool computes the money; a verifier node
 reconciles the model's narrative against the tool output and drives a bounded repair loop;
@@ -560,7 +570,7 @@ every node a pure function, so if it became a liability the port is ~30 lines.
 **5. Explain your retrieval setup and prove it was worth it.**
 BM25 for exact tokens, BGE-small dense embeddings for paraphrase, fused with Reciprocal
 Rank Fusion. RRF fuses *ranks*, so I never have to tune a weight between incomparable score
-scales. Measured on 78 hand-labelled queries: BM25 87.2% recall@5, dense 92.3%, RRF 96.2%.
+scales. Measured on 78 hand-labelled queries: BM25 88.5% recall@5, dense 93.6%, RRF 97.4%.
 I set the rule up front that if fusion had not beaten both, I would ship the simpler one.
 
 **6. How do you prevent hallucination?**
@@ -679,7 +689,7 @@ only on model output: the point of the rule is to stop the model asserting what 
 point at, and a hand-written table is already auditable code.
 
 **18. How is this tested?**
-51 tests, 12 seconds, no API key. `conftest.py` forces `AI_ENABLED=false` so the suite is
+59 tests, 12 seconds, no API key. `conftest.py` forces `AI_ENABLED=false` so the suite is
 offline and deterministic — anyone can clone and run it. Coverage includes the three-bucket
 invariant parametrised over every sample × every profile, corpus integrity (unique IDs,
 bearer matches list), verifier behaviour with a *deliberately injected* inconsistent

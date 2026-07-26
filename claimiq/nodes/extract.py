@@ -19,7 +19,7 @@ from pathlib import Path
 import pypdfium2 as pdfium
 from pydantic import BaseModel, Field
 
-from claimiq.llm import LLMClient, LLMUnavailable, try_client
+from claimiq.llm import EXTRACTION_MAX_TOKENS, LLMClient, LLMUnavailable, try_client
 from claimiq.state import BillLineItem, Head
 
 MAX_PAGES = 6
@@ -290,7 +290,7 @@ def extract_via_ocr(
         system=OCR_SYSTEM,
         user=f"OCR text from a {path.name} hospital bill:\n\n{text[:12000]}",
         schema=ExtractedBill,
-        max_tokens=8000,
+        max_tokens=EXTRACTION_MAX_TOKENS,
     )
 
     items = [

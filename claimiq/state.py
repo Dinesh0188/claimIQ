@@ -193,6 +193,9 @@ class AuditResult(BaseModel):
     facts_json: str = ""
     unmapped_count: int = 0
     ai_used: bool = False
+    # Non-fatal degradations, surfaced in the UI. A fallback that no one is told
+    # about produces plausible-looking wrong numbers.
+    errors: list[str] = Field(default_factory=list)
     corpus_version: str = "unversioned"
     verify_passed: bool = True
     verify_problems: list[str] = Field(default_factory=list)

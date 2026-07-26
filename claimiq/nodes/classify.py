@@ -38,7 +38,10 @@ from claimiq.state import BEARER_OF, BillLineItem, ClaimState, Classification, I
 
 RETRIEVAL_THRESHOLD = 0.82
 CANDIDATES_PER_ITEM = 5
-LLM_BATCH_SIZE = 12
+# Sized against the per-minute token ceiling, not picked for tidiness. Twelve items
+# with five candidates each built a ~3,350-token prompt which, plus reserved
+# completion, exceeded an 8,000 TPM tier. Eight keeps the whole request under ~4,500.
+LLM_BATCH_SIZE = 8
 
 LIST_TO_CLASSIFICATION: dict[str, Classification] = {
     "LIST_I_OPTIONAL": "LIST_I_OPTIONAL",
@@ -284,7 +287,11 @@ def _to_finding(item: BillLineItem, determination: Determination) -> ItemFinding
     )
 
 
-def classify_items(items: list[BillLineItem], strategy: str = "auto") -> list[ItemFinding]:
+def classify_items(
+    items: list[BillLineItem],
+    strategy: str = "auto",
+    errors: list[str] | None = None,
+) -> list[ItemFinding]:
     """strategy: 'auto' | 'head_only' | 'keyword' | 'retrieval' | 'deterministic' | 'llm'."""
     if strategy == "head_only":
         return [_to_finding(i, classify_head_only(i)) for i in items]
@@ -303,9 +310,17 @@ def classify_items(items: list[BillLineItem], strategy: str = "auto") -> list[It
 
     try:
         verdicts = classify_llm(items, client)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - a demo must not die on a 429
         if strategy == "llm":
             raise
+        # Degrade, but never silently. An unreported fallback shows a smaller
+        # hospital write-off than the LLM path would and looks entirely healthy,
+        # which is the worst kind of failure: wrong numbers with no warning.
+        if errors is not None:
+            errors.append(
+                f"classify: fell back to deterministic ({type(exc).__name__}). "
+                "Deductions will be under-reported relative to the LLM path."
+            )
         return [_to_finding(i, classify_deterministic(i)) for i in items]
 
     return [
@@ -325,8 +340,10 @@ def classify_items(items: list[BillLineItem], strategy: str = "auto") -> list[It
 
 
 def classify_node(state: ClaimState) -> dict:
-    findings = classify_items(state.packet.line_items)
+    errors: list[str] = []
+    findings = classify_items(state.packet.line_items, errors=errors)
     return {
         "findings": findings,
-        "ai_used": any(f.cited_chunk_id for f in findings) and try_client() is not None,
+        "ai_used": any(f.source == "llm" for f in findings),
+        "errors": [*state.errors, *errors],
     }

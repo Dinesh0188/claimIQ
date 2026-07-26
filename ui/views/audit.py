@@ -137,6 +137,9 @@ status[2].caption(f"Unmapped items: {result['unmapped_count']}")
 for problem in result["verify_problems"]:
     st.error(f"Verifier: {problem}")
 
+for degradation in result.get("errors") or []:
+    st.warning(degradation)
+
 if result["unmapped_count"]:
     st.warning(
         f"{result['unmapped_count']} line item(s) could not be matched to the catalog. "

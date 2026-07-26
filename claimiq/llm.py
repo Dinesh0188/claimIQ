@@ -30,7 +30,17 @@ _cache = Cache(str(ROOT / ".cache" / "llm"))
 # A long bill table is a long JSON document. Leaving this to the provider default
 # is what produced "max completion tokens reached before generating a valid
 # document" on the 37-row bill.
-MAX_COMPLETION_TOKENS = 8000
+# Right-sized per call site, NOT one generous global.
+#
+# Providers count reserved completion tokens against the per-minute budget, so
+# max_tokens is not free headroom -- it is spend. An 8000 default (added for the long
+# extraction output) meant classification requested 3,353 prompt + 8,000 reserved =
+# 11,353 against an 8,000/min cap, so every call 413'd and silently fell back to the
+# deterministic path. The LLM was effectively switched off and nothing said so.
+#
+# Rule of thumb: prompt + max_tokens must fit the tier's TPM ceiling.
+MAX_COMPLETION_TOKENS = 2000   # default: verdict batches, SQL, judgements
+EXTRACTION_MAX_TOKENS = 5000   # a long bill table is a long JSON document
 RATE_LIMIT_RETRIES = 3
 RATE_LIMIT_BACKOFF = 4.0  # seconds, multiplied by attempt number
 

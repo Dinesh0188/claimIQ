@@ -87,6 +87,7 @@ def audit(packet: ClaimPacket, persist: bool = True) -> AuditResult:
         facts_json=state.facts_json,
         unmapped_count=sum(1 for f in state.findings if f.classification == "UNMAPPED"),
         ai_used=state.ai_used,
+        errors=state.errors,
         corpus_version=corpus_version(),
         verify_passed=state.verify_passed,
         verify_problems=state.verify_problems,

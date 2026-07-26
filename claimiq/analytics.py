@@ -123,16 +123,22 @@ def top_missing_documents(limit: int = 10) -> pd.DataFrame:
 
 # --- text to SQL ----------------------------------------------------------
 
+# Views, not base tables. Money is stored as integer paise for exactness; these
+# expose rupees so generated SQL reads naturally and answers come back as 24300
+# rather than 2430000.
 SCHEMA_DESCRIPTION = """
-Table claims(claim_id TEXT, audited_at TEXT, month TEXT, diagnosis TEXT, procedure TEXT,
+View v_claims(claim_id TEXT, audited_at TEXT, month TEXT, diagnosis TEXT, procedure TEXT,
   gross_bill REAL, settlement REAL, patient_liability REAL, hospital_writeoff REAL,
   room_rent_deduction REAL, unmapped_count INT, doc_gap_count INT, ai_pipeline INT)
+  All money columns are in rupees. month is 'YYYY-MM'.
+  ai_pipeline = 1 when the claim went through the full LLM agent, 0 when deterministic.
 
-Table findings(claim_id TEXT, line_no INT, description TEXT, head TEXT,
+View v_findings(claim_id TEXT, line_no INT, description TEXT, head TEXT,
   classification TEXT, bearer TEXT, amount REAL, deducted REAL, cited_chunk_id TEXT)
   classification in (PAYABLE, LIST_I_OPTIONAL, LIST_II_ROOM, LIST_III_PROCEDURE,
                      LIST_IV_TREATMENT, UNMAPPED)
   bearer in (INSURER, PATIENT, HOSPITAL, UNKNOWN)
+  bearer='HOSPITAL' with deducted>0 is preventable hospital loss -- a billing error.
 
 Table doc_gaps(claim_id TEXT, document_id TEXT, name TEXT, severity TEXT)
   severity in (BLOCKER, QUERY_LIKELY, ADVISORY)
@@ -149,7 +155,9 @@ Rules:
 - Money columns are rupees. Round aggregates to 0 decimals.
 - Alias aggregates to readable names."""
 
-ALLOWED_TABLES = {"claims", "findings", "doc_gaps"}
+# Views only for money-bearing data, so generated SQL cannot accidentally read raw
+# paise and report a figure 100x too large.
+ALLOWED_TABLES = {"v_claims", "v_findings", "doc_gaps"}
 FORBIDDEN = re.compile(
     r"\b(insert|update|delete|drop|alter|attach|detach|pragma|create|replace|vacuum)\b",
     re.IGNORECASE,
