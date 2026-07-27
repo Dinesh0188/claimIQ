@@ -44,6 +44,37 @@ EXTRACTION_MAX_TOKENS = 5000   # a long bill table is a long JSON document
 RATE_LIMIT_RETRIES = 3
 RATE_LIMIT_BACKOFF = 4.0  # seconds, multiplied by attempt number
 
+# Free tiers cap a *single request* at prompt + reserved completion. Exceed it and the
+# request 413s every time, however much daily quota is left -- waiting cannot help.
+#
+# A fixed EXTRACTION_MAX_TOKENS is therefore wrong: a small bill fits, a slightly
+# larger one does not. 5000 reserved plus a ~3,100-token prompt requested 8,133
+# against Groq's 8,000/min ceiling and failed by 133 tokens.
+#
+# So the budget is computed from the prompt actually being sent, and the caller
+# splits its input when even the floor will not fit.
+TPM_CEILING = 8000        # free-tier per-minute ceiling; raise for a paid tier
+TPM_SAFETY_MARGIN = 900   # the provider's tokeniser will not match our estimate exactly
+MIN_COMPLETION_TOKENS = 900  # below this a bill table cannot finish; split instead
+
+# Deliberately pessimistic. The usual "~4 characters per token" rule is for prose;
+# a bill is dense with digits, currency and abbreviations that tokenise far worse.
+# Budgeting at 4 estimated ~7,400 tokens for a request Groq counted as 8,126 -- over
+# the ceiling by 126, so it 413'd. Underestimating costs a failed request; over-
+# estimating costs a slightly shorter reply, so the error is cheap in one direction
+# and not the other.
+CHARS_PER_TOKEN = 3.0
+
+
+def estimate_tokens(text: str) -> int:
+    return int(len(text) / CHARS_PER_TOKEN) + 1
+
+
+def fit_completion_budget(prompt_chars: int, wanted: int) -> int:
+    """Largest completion budget that keeps this request under the ceiling."""
+    available = TPM_CEILING - TPM_SAFETY_MARGIN - int(prompt_chars / CHARS_PER_TOKEN) - 1
+    return max(0, min(wanted, available))
+
 
 class LLMUnavailable(RuntimeError):
     """No usable key/model. Callers fall back to deterministic text."""
@@ -154,6 +185,19 @@ class LLMClient:
             },
             {"role": "user", "content": _user_content(user, images)},
         ]
+
+        # Trim the reserved completion to whatever this prompt leaves room for.
+        # Without this a slightly longer document 413s where a shorter one succeeded,
+        # and the failure looks like a quota problem rather than a sizing bug.
+        prompt_chars = sum(len(str(m.get("content", ""))) for m in messages)
+        budget = fit_completion_budget(prompt_chars, max_tokens)
+        if budget < MIN_COMPLETION_TOKENS:
+            raise LLMUnavailable(
+                f"this document needs a {estimate_tokens(str(prompt_chars))}-token prompt, "
+                f"which leaves only {budget} tokens for the reply against a "
+                f"{TPM_CEILING}/min ceiling. Split the document or use a paid tier."
+            )
+        max_tokens = budget
 
         started = time.perf_counter()
         last_error: Exception | None = None

@@ -19,7 +19,15 @@ from pathlib import Path
 import pypdfium2 as pdfium
 from pydantic import BaseModel, Field
 
-from claimiq.llm import EXTRACTION_MAX_TOKENS, LLMClient, LLMUnavailable, try_client
+from claimiq.llm import (
+    EXTRACTION_MAX_TOKENS,
+    MIN_COMPLETION_TOKENS,
+    TPM_CEILING,
+    TPM_SAFETY_MARGIN,
+    LLMClient,
+    LLMUnavailable,
+    try_client,
+)
 from claimiq.state import BillLineItem, Head
 
 MAX_PAGES = 20
@@ -397,39 +405,86 @@ reading order. Column values for one row usually appear consecutively.
 - If a row's figures are unreadable, set confidence below 0.7 rather than guessing."""
 
 
+def _ocr_chunks(text: str, client: LLMClient) -> list[str]:
+    """Split OCR text so each request fits inside the provider's per-request ceiling.
+
+    A single request is capped at prompt + reserved completion. One long bill can
+    exceed that on its own, and no amount of waiting helps -- it 413s every time. So
+    the text is cut into pieces sized from what is actually left after the system
+    prompt, on line boundaries so a bill row is never split down the middle.
+    """
+    # The JSON schema is injected into the system prompt by structured(), so it counts
+    # too -- roughly 1,800 characters for ExtractedBill with its nested row model.
+    overhead = len(OCR_SYSTEM) + 2200
+    room = TPM_CEILING - TPM_SAFETY_MARGIN - MIN_COMPLETION_TOKENS - int(overhead / 3.0)
+    budget_chars = max(1200, int(room * 3.0))
+
+    if len(text) <= budget_chars:
+        return [text]
+
+    chunks, current = [], ""
+    for line in text.splitlines(keepends=True):
+        if len(current) + len(line) > budget_chars and current:
+            chunks.append(current)
+            current = ""
+        current += line
+    if current.strip():
+        chunks.append(current)
+    return chunks
+
+
 def extract_via_ocr(
     path: Path, client: LLMClient
 ) -> tuple[list[BillLineItem], ExtractedBill] | None:
-    """OCR the scan, then let the text model structure it. Returns None if OCR found nothing."""
+    """OCR the scan, then let the text model structure it. None if OCR found nothing."""
     text = ocr_pages(path)
     if len(text) < 80:
         return None
 
-    result = client.structured(
-        node="extract",
-        system=OCR_SYSTEM,
-        user=f"OCR text from a {path.name} hospital bill:\n\n{text[:12000]}",
-        schema=ExtractedBill,
-        max_tokens=EXTRACTION_MAX_TOKENS,
-    )
+    chunks = _ocr_chunks(text, client)
+    rows: list[ExtractedRow] = []
+    for index, chunk in enumerate(chunks, 1):
+        part = f" (part {index} of {len(chunks)})" if len(chunks) > 1 else ""
+        try:
+            result = client.structured(
+                node="extract",
+                system=OCR_SYSTEM,
+                user=f"OCR text from a hospital bill{part}:\n\n{chunk}",
+                schema=ExtractedBill,
+                max_tokens=EXTRACTION_MAX_TOKENS,
+            )
+        except LLMUnavailable:
+            # One unreadable section should not lose the rest of the bill.
+            continue
+        rows.extend(result.rows)
 
-    items = [
-        BillLineItem(
-            line_no=row.line_no or i,
-            description=row.description.strip(),
-            head=row.head,
-            quantity=_decimal(row.quantity, "1"),
-            unit_rate=_decimal(row.unit_rate),
-            amount=_decimal(row.amount),
-            extract_confidence=row.confidence,
+    # Splitting can repeat a row when a section boundary lands mid-table.
+    seen: set[tuple[str, str]] = set()
+    items: list[BillLineItem] = []
+    for row in rows:
+        key = (row.description.strip().lower(), str(row.amount))
+        if key in seen:
+            continue
+        seen.add(key)
+        items.append(
+            BillLineItem(
+                line_no=len(items) + 1,
+                description=row.description.strip(),
+                head=row.head,
+                quantity=_decimal(row.quantity, "1"),
+                unit_rate=_decimal(row.unit_rate),
+                amount=_decimal(row.amount),
+                extract_confidence=row.confidence,
+            )
         )
-        for i, row in enumerate(result.rows, 1)
-    ]
+
     if not items:
         return None
 
-    result.method = "ocr+llm"
-    return items, result
+    return items, ExtractedBill(
+        method="ocr+llm" if len(chunks) == 1 else f"ocr+llm ({len(chunks)} parts)",
+        rows=rows,
+    )
 
 
 def pdf_text_layer_pages(path: Path, max_pages: int = MAX_PAGES) -> list[str]:
