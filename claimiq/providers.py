@@ -31,6 +31,11 @@ class Provider:
     # community models frequently do not, and sending it gets the whole request
     # rejected -- so it is declared per provider rather than assumed.
     supports_json_mode: bool = True
+    # Per-minute token ceiling for a SINGLE request (prompt + reserved completion).
+    # Not a daily quota: exceed this and the request 413s every time, so the client
+    # sizes its completion budget against it rather than discovering it by failing.
+    # Groq's free tier is 8,000; OpenRouter is far more generous.
+    tpm_ceiling: int = 8000
     note: str = ""
 
     @property
@@ -84,6 +89,7 @@ def load_providers() -> dict[str, Provider]:
             model=raw["model"],
             vision_model=raw.get("vision_model"),
             supports_json_mode=bool(raw.get("supports_json_mode", True)),
+            tpm_ceiling=int(raw.get("tpm_ceiling", 8000)),
             note=raw.get("note", ""),
         )
     return providers or {"env": _from_env()}

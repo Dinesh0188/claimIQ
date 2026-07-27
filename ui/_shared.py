@@ -1,8 +1,8 @@
 """Theme, chrome and API helpers.
 
-Design rule applied throughout: if a hospital billing clerk does not need an element
-to do their job, it is not on screen. No gradient banners, no capability tags, no
-paragraph explaining what the tool they already opened is for.
+Dark surface, single orange accent. Colour carries meaning and is not decoration:
+orange is the product, red is money the hospital loses, blue is money the patient
+bears, green is money that settles. Nothing else is coloured.
 """
 
 from __future__ import annotations
@@ -13,192 +13,213 @@ import streamlit as st
 API = "http://127.0.0.1:8000"
 BRAND = "ClaimIQ"
 
-# Colour carries meaning and nothing else uses these three:
-#   red   = money the hospital loses      blue = money the patient bears
-#   green = money that settles
-INK = "#101828"
-MUTED = "#667085"
-LINE = "#e4e7ec"
-ACCENT = "#0e7c6b"
-HOSPITAL = "#d1495b"
-PATIENT = "#3d6fa5"
+INK = "#0c0d10"        # near-black, the surface everything sits on
+PANEL = "#15171c"      # raised card
+LINE = "#24272f"       # hairline borders
+TEXT = "#e8eaed"       # primary text
+MUTED = "#9aa0aa"      # secondary text
+ACCENT = "#ff7a1a"     # signature orange
+ACCENT_DEEP = "#e05a00"
+HOSPITAL = "#ff5c5c"   # money the hospital loses
+PATIENT = "#5aa9ff"    # money the patient bears
+SETTLED = "#3ddc84"    # money that settles
 
 # Scoped selectors only. An earlier version used
 #   section[data-testid="stSidebar"] * { color: ... !important }
-# which forced one colour onto every descendant including components that carry
-# their own background -- that is what made the sidebar unreadable.
+# which forced one colour onto every descendant including components carrying their
+# own background -- that is what made the sidebar unreadable.
 CSS = f"""
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap');
 
   html, body, [class*="css"] {{ font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }}
 
   .stApp {{
     background:
-      radial-gradient(1100px 500px at 8% -12%, #e0f2fe 0%, transparent 55%),
-      radial-gradient(900px 460px at 96% 0%, #d9f5ee 0%, transparent 52%),
-      #f6f8fb;
+      radial-gradient(900px 420px at 12% -10%, rgba(255,122,26,.13) 0%, transparent 60%),
+      radial-gradient(700px 380px at 92% 4%, rgba(255,122,26,.07) 0%, transparent 55%),
+      {INK};
+    color: {TEXT};
   }}
-  .block-container {{ padding-top: 2.2rem; max-width: 1200px; }}
+  .block-container {{ padding-top: 2.2rem; max-width: 1240px; }}
 
-  /* ---- sidebar: scoped selectors only. A universal `*` rule with !important is
-     what made this unreadable before -- it recoloured components that carry their
-     own background. ---- */
+  h1, h2, h3, h4, p, span, label, li {{ color: {TEXT}; }}
+  [data-testid="stCaptionContainer"] p {{ color: {MUTED}; }}
+
+  /* ---------- sidebar ---------- */
   section[data-testid="stSidebar"] {{
-    background: linear-gradient(180deg, #0b1220 0%, #101a2e 55%, #0d1a2b 100%);
-    border-right: 1px solid rgba(255,255,255,.07);
+    background: #0a0b0e; border-right: 1px solid {LINE};
   }}
   section[data-testid="stSidebar"] .stMarkdown p,
-  section[data-testid="stSidebar"] .stMarkdown li,
-  section[data-testid="stSidebar"] label {{ color: #cbd5e1; }}
-  section[data-testid="stSidebar"] h1,
-  section[data-testid="stSidebar"] h2,
-  section[data-testid="stSidebar"] h3 {{ color: #fff; }}
-  section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {{ color: #8fa3bd; }}
+  section[data-testid="stSidebar"] li,
+  section[data-testid="stSidebar"] label {{ color: #c7ccd4; }}
+  section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {{ color: #7e858f; }}
   section[data-testid="stSidebar"] [data-testid="stExpander"] details {{
-    background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.09);
-    border-radius: 10px;
+    background: {PANEL}; border: 1px solid {LINE}; border-radius: 12px;
   }}
-  section[data-testid="stSidebar"] [data-testid="stExpander"] summary {{ color: #e2e8f0; }}
+  section[data-testid="stSidebar"] [data-testid="stExpander"] summary {{ color: {TEXT}; }}
+
+  /* nav links */
+  section[data-testid="stSidebar"] a[data-testid="stSidebarNavLink"] {{
+    border-radius: 10px; margin-bottom: 2px;
+  }}
+  section[data-testid="stSidebar"] a[data-testid="stSidebarNavLink"]:hover {{
+    background: rgba(255,122,26,.10);
+  }}
+  section[data-testid="stSidebar"] a[aria-current="page"] {{
+    background: rgba(255,122,26,.16) !important;
+    box-shadow: inset 2px 0 0 {ACCENT};
+  }}
 
   .ciq-brand {{
-    font-size: 27px; font-weight: 800; letter-spacing: -1px; line-height: 1.1;
-    background: linear-gradient(92deg, #5eead4 0%, #38bdf8 48%, #a78bfa 100%);
+    font-size: 30px; font-weight: 800; letter-spacing: -1.2px; line-height: 1;
+    background: linear-gradient(96deg, #ffb056 0%, {ACCENT} 45%, {ACCENT_DEEP} 100%);
     -webkit-background-clip: text; background-clip: text; color: transparent;
   }}
   .ciq-brand-sub {{
-    font-size: 10.5px; font-weight: 700; letter-spacing: 2.4px;
-    text-transform: uppercase; color: #64809f; margin-top: 2px;
+    font-size: 10px; font-weight: 700; letter-spacing: 2.6px; text-transform: uppercase;
+    color: #6d7480; margin-top: 4px;
   }}
-
   .ciq-pill {{
-    display: inline-flex; align-items: center; gap: 8px; margin-top: 14px;
-    padding: 7px 13px; border-radius: 999px; font-size: 12px; font-weight: 700;
-    background: rgba(94,234,212,.10); border: 1px solid rgba(94,234,212,.30);
-    color: #7dd3c0;
+    display: inline-flex; align-items: center; gap: 8px; margin-top: 15px;
+    padding: 7px 14px; border-radius: 999px; font-size: 11.5px; font-weight: 700;
+    background: rgba(255,122,26,.11); border: 1px solid rgba(255,122,26,.30);
+    color: #ffab6b;
   }}
-  .ciq-dot {{
-    width: 8px; height: 8px; border-radius: 50%; display: inline-block;
-    box-shadow: 0 0 0 3px rgba(255,255,255,.07);
-  }}
+  .ciq-dot {{ width: 7px; height: 7px; border-radius: 50%; display: inline-block; }}
 
+  /* ---------- page header ---------- */
   h1.ciq-title {{
-    font-size: 34px; font-weight: 800; letter-spacing: -1.1px; margin: 0 0 6px;
-    background: linear-gradient(95deg, {INK} 30%, #1d6fa5 75%, {ACCENT} 100%);
+    font-size: 38px; font-weight: 800; letter-spacing: -1.4px; margin: 0 0 8px;
+    background: linear-gradient(94deg, #ffffff 22%, #ffc590 68%, {ACCENT} 100%);
     -webkit-background-clip: text; background-clip: text; color: transparent;
   }}
-  p.ciq-sub {{ color: {MUTED}; font-size: 15px; margin: 0 0 26px; font-weight: 500; }}
+  p.ciq-sub {{ color: {MUTED}; font-size: 15px; margin: 0 0 28px; font-weight: 500; }}
 
-  /* ---- metrics ---- */
+  /* ---------- metrics ---------- */
   div[data-testid="stMetric"] {{
-    background: #fff; border: 1px solid {LINE}; border-radius: 16px;
-    padding: 18px 20px; box-shadow: 0 1px 2px rgba(16,24,40,.05),
-                                    0 12px 26px -20px rgba(16,24,40,.28);
-    transition: transform .15s ease, box-shadow .15s ease;
+    background: linear-gradient(168deg, {PANEL} 0%, #101216 100%);
+    border: 1px solid {LINE}; border-radius: 16px; padding: 18px 20px;
+    transition: transform .16s ease, border-color .16s ease;
   }}
-  div[data-testid="stMetric"]:hover {{
-    transform: translateY(-2px);
-    box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 18px 34px -20px rgba(16,24,40,.34);
-  }}
+  div[data-testid="stMetric"]:hover {{ transform: translateY(-2px); border-color: #34394a; }}
   div[data-testid="stMetricValue"] {{
-    font-size: 29px; font-weight: 800; letter-spacing: -.8px; color: {INK};
+    font-size: 30px; font-weight: 800; letter-spacing: -1px; color: {TEXT};
   }}
   div[data-testid="stMetricLabel"] p {{
     font-size: 10.5px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: .9px; color: {MUTED};
+    letter-spacing: 1px; color: {MUTED};
   }}
   .ciq-loss div[data-testid="stMetric"] {{
-    background: linear-gradient(160deg, #fff5f6 0%, #ffffff 62%);
-    border-color: #fbd0d5;
+    background: linear-gradient(168deg, rgba(255,92,92,.13) 0%, {PANEL} 70%);
+    border-color: rgba(255,92,92,.34);
   }}
   .ciq-loss div[data-testid="stMetricValue"] {{ color: {HOSPITAL}; }}
 
-  /* ---- uploaded file rows ---- */
+  /* ---------- uploaded files ---------- */
   .ciq-file {{
     display: flex; justify-content: space-between; align-items: center; gap: 12px;
-    padding: 12px 15px; border: 1px solid {LINE}; border-radius: 12px;
-    background: #fff; margin-bottom: 8px; font-size: 13.5px; font-weight: 600;
-    color: {INK}; box-shadow: 0 1px 2px rgba(16,24,40,.04);
+    padding: 13px 16px; border: 1px solid {LINE}; border-radius: 13px;
+    background: {PANEL}; margin-bottom: 8px; font-size: 13.5px; font-weight: 600;
+    color: {TEXT};
   }}
-  .ciq-file:hover {{ border-color: #b9e4da; }}
+  .ciq-file:hover {{ border-color: rgba(255,122,26,.42); }}
   .ciq-tag {{
-    font-size: 10.5px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase;
-    padding: 4px 9px; border-radius: 999px;
-    background: #e8f6f2; color: #0b6d5e; border: 1px solid #c3e9df;
+    font-size: 10px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase;
+    padding: 4px 10px; border-radius: 999px;
+    background: rgba(255,122,26,.14); color: #ffb277;
+    border: 1px solid rgba(255,122,26,.30);
   }}
   .ciq-meta {{ color: {MUTED}; font-weight: 500; font-size: 12.5px; }}
 
-  /* ---- buttons ---- */
+  /* ---------- buttons ---------- */
   .stButton button {{
-    border-radius: 11px; font-weight: 700; letter-spacing: .1px;
-    padding: .55rem 1.15rem; border: 1px solid {LINE}; transition: all .16s ease;
+    border-radius: 12px; font-weight: 700; padding: .58rem 1.2rem;
+    background: {PANEL}; color: {TEXT}; border: 1px solid {LINE};
+    transition: all .16s ease;
+  }}
+  .stButton button:hover:enabled {{
+    border-color: rgba(255,122,26,.55); color: #ffb277;
   }}
   .stButton button[kind="primary"] {{
-    background: linear-gradient(96deg, {ACCENT} 0%, #0ea5a0 55%, #0891b2 100%);
-    border: none; color: #fff;
-    box-shadow: 0 8px 20px -10px rgba(14,124,107,.85);
+    background: linear-gradient(96deg, {ACCENT} 0%, {ACCENT_DEEP} 100%);
+    border: none; color: #160c04;
+    box-shadow: 0 10px 26px -12px rgba(255,122,26,.9);
   }}
   .stButton button[kind="primary"]:hover:enabled {{
     transform: translateY(-1px);
-    box-shadow: 0 12px 26px -10px rgba(14,124,107,.95);
+    box-shadow: 0 14px 32px -12px rgba(255,122,26,1);
   }}
-  .stDownloadButton button {{ border-radius: 11px; font-weight: 700; }}
+  .stDownloadButton button {{ border-radius: 12px; font-weight: 700; }}
 
-  /* ---- upload dropzone ---- */
+  /* ---------- upload dropzone ---------- */
   [data-testid="stFileUploaderDropzone"] {{
-    background: linear-gradient(158deg, #ffffff 0%, #f2fbf9 100%);
-    border: 2px dashed #9fd8cc; border-radius: 16px; padding: 26px;
+    background: linear-gradient(160deg, rgba(255,122,26,.06) 0%, {PANEL} 70%);
+    border: 2px dashed rgba(255,122,26,.42); border-radius: 18px; padding: 30px;
     transition: all .18s ease;
   }}
   [data-testid="stFileUploaderDropzone"]:hover {{
-    border-color: {ACCENT}; background: linear-gradient(158deg, #ffffff 0%, #e9f7f4 100%);
+    border-color: {ACCENT}; background: linear-gradient(160deg, rgba(255,122,26,.11) 0%, {PANEL} 70%);
+  }}
+  [data-testid="stFileUploaderDropzone"] button {{
+    background: rgba(255,122,26,.14); border: 1px solid rgba(255,122,26,.34);
+    color: #ffb277;
   }}
 
-  /* ---- tabs ---- */
+  /* ---------- inputs ---------- */
+  .stTextInput input, .stNumberInput input, .stSelectbox div[data-baseweb="select"] > div {{
+    background: {PANEL} !important; border-color: {LINE} !important; color: {TEXT} !important;
+  }}
+
+  /* ---------- tabs ---------- */
   .stTabs [data-baseweb="tab-list"] {{ gap: 4px; border-bottom: 1px solid {LINE}; }}
   .stTabs [data-baseweb="tab"] {{
     font-weight: 700; font-size: 14px; color: {MUTED};
-    border-radius: 10px 10px 0 0; padding: 9px 16px;
+    border-radius: 11px 11px 0 0; padding: 9px 17px;
   }}
-  .stTabs [aria-selected="true"] {{ color: {ACCENT} !important; background: #eefaf7; }}
+  .stTabs [aria-selected="true"] {{
+    color: {ACCENT} !important; background: rgba(255,122,26,.10);
+  }}
 
-  div[data-testid="stDataFrame"] {{ border: 1px solid {LINE}; border-radius: 12px; }}
+  div[data-testid="stDataFrame"] {{ border: 1px solid {LINE}; border-radius: 13px; }}
   hr {{ border-color: {LINE}; }}
+  code {{ font-family: 'JetBrains Mono', monospace; color: #ffb277; }}
 
-  /* ---- sample divider ---- */
+  /* ---------- sample divider ---------- */
   .ciq-or {{
-    display: flex; align-items: center; gap: 14px; margin: 26px 0 12px;
-    font-size: 12.5px; font-weight: 700; letter-spacing: .3px; color: {MUTED};
+    display: flex; align-items: center; gap: 16px; margin: 30px 0 14px;
+    font-size: 12px; font-weight: 700; letter-spacing: .5px; color: {MUTED};
+    text-transform: uppercase;
   }}
-  .ciq-or::before, .ciq-or::after {{
-    content: ""; flex: 1; height: 1px; background: {LINE};
-  }}
+  .ciq-or::before, .ciq-or::after {{ content: ""; flex: 1; height: 1px; background: {LINE}; }}
 
-  /* ---- value proposition, empty state only ---- */
-  .ciq-value {{ margin-top: 26px; }}
+  /* ---------- value proposition, empty state only ---------- */
+  .ciq-value {{ margin-top: 34px; }}
   .ciq-value-head {{
-    font-size: 21px; font-weight: 800; color: {INK};
-    letter-spacing: -.5px; margin-bottom: 8px;
+    font-size: 23px; font-weight: 800; color: {TEXT};
+    letter-spacing: -.7px; margin-bottom: 10px;
   }}
-  .ciq-value p {{ color: {MUTED}; font-size: 14.5px; line-height: 1.65; max-width: 760px; }}
+  .ciq-value p {{ color: {MUTED}; font-size: 14.5px; line-height: 1.7; max-width: 780px; }}
   .ciq-value-grid {{
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 14px; margin: 22px 0 18px;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 14px; margin: 24px 0 18px;
   }}
   .ciq-value-card {{
-    background: #fff; border: 1px solid {LINE}; border-radius: 14px;
-    padding: 18px 19px; border-top: 3px solid {LINE};
-    box-shadow: 0 1px 2px rgba(16,24,40,.04), 0 14px 28px -24px rgba(16,24,40,.3);
+    background: {PANEL}; border: 1px solid {LINE}; border-radius: 16px;
+    padding: 20px; border-top: 3px solid {LINE};
   }}
-  .ciq-vc-green {{ border-top-color: {ACCENT}; }}
+  .ciq-vc-green {{ border-top-color: {SETTLED}; }}
   .ciq-vc-blue  {{ border-top-color: {PATIENT}; }}
-  .ciq-vc-red   {{ border-top-color: {HOSPITAL}; background: linear-gradient(165deg,#fff6f7 0%,#fff 60%); }}
-  .ciq-vc-label {{
-    font-size: 11px; font-weight: 800; letter-spacing: .9px;
-    text-transform: uppercase; color: {MUTED}; margin-bottom: 7px;
+  .ciq-vc-red   {{
+    border-top-color: {HOSPITAL};
+    background: linear-gradient(168deg, rgba(255,92,92,.09) 0%, {PANEL} 70%);
   }}
-  .ciq-vc-text {{ font-size: 13.5px; line-height: 1.6; color: #475467; }}
-  .ciq-value-foot {{ font-size: 13px !important; color: #7a889b !important; }}
+  .ciq-vc-label {{
+    font-size: 10.5px; font-weight: 800; letter-spacing: 1px;
+    text-transform: uppercase; color: {MUTED}; margin-bottom: 8px;
+  }}
+  .ciq-vc-text {{ font-size: 13.5px; line-height: 1.65; color: #b6bcc6; }}
+  .ciq-value-foot {{ font-size: 13px !important; color: #7e858f !important; }}
 </style>
 """
 
@@ -288,7 +309,7 @@ def require_api() -> dict:
 
 def sidebar(health: dict) -> None:
     live = health["key_present"] and health["ai_enabled"]
-    colour = "#22c55e" if live else "#f59e0b"
+    colour = SETTLED if live else ACCENT
     label = "AI reading enabled" if live else "Deterministic mode"
 
     st.sidebar.markdown(
@@ -298,7 +319,7 @@ def sidebar(health: dict) -> None:
         f"{label}</div>",
         unsafe_allow_html=True,
     )
-    st.sidebar.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+    st.sidebar.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
     try:
         available = api_get("/api/providers")
@@ -317,16 +338,15 @@ def sidebar(health: dict) -> None:
             st.rerun()
 
     # Insurers disagree on which charges the room-rent rule scales. Rather than pick
-    # one and imply certainty, the estimate is shown as a range and this selects which
+    # one and imply certainty, the estimate is a range and this selects which
     # interpretation the headline figure uses.
     try:
         profiles = api_get("/api/profiles")
         names = list(profiles)
+        current = st.session_state.get("profile", "typical")
         picked = st.sidebar.selectbox(
             "Insurer interpretation", names,
-            index=names.index(st.session_state.get("profile", "typical"))
-            if st.session_state.get("profile", "typical") in names
-            else names.index("typical"),
+            index=names.index(current) if current in names else names.index("typical"),
             format_func=lambda p: profiles[p]["label"],
         )
         st.session_state["profile"] = picked

@@ -278,14 +278,18 @@ measures.append("total")
 fig = go.Figure(
     go.Waterfall(
         orientation="v", measure=measures, x=labels, y=values,
-        connector={"line": {"color": "rgba(148,163,184,.5)"}},
-        decreasing={"marker": {"color": "#d1495b"}},
-        totals={"marker": {"color": "#0e7c6b"}},
+        connector={"line": {"color": "rgba(154,160,170,.35)"}},
+        decreasing={"marker": {"color": "#ff5c5c"}},
+        increasing={"marker": {"color": "#5aa9ff"}},
+        totals={"marker": {"color": "#ff7a1a"}},
     )
 )
 fig.update_layout(
-    height=360, margin=dict(t=10, b=10, l=0, r=0), showlegend=False,
+    height=380, margin=dict(t=10, b=10, l=0, r=0), showlegend=False,
     plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+    font=dict(color="#9aa0aa"),
+    xaxis=dict(gridcolor="rgba(255,255,255,.05)"),
+    yaxis=dict(gridcolor="rgba(255,255,255,.05)"),
 )
 st.plotly_chart(fig, use_container_width=True)
 

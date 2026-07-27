@@ -70,9 +70,9 @@ def estimate_tokens(text: str) -> int:
     return int(len(text) / CHARS_PER_TOKEN) + 1
 
 
-def fit_completion_budget(prompt_chars: int, wanted: int) -> int:
-    """Largest completion budget that keeps this request under the ceiling."""
-    available = TPM_CEILING - TPM_SAFETY_MARGIN - int(prompt_chars / CHARS_PER_TOKEN) - 1
+def fit_completion_budget(prompt_chars: int, wanted: int, ceiling: int = TPM_CEILING) -> int:
+    """Largest completion budget that keeps this request under the provider's ceiling."""
+    available = ceiling - TPM_SAFETY_MARGIN - int(prompt_chars / CHARS_PER_TOKEN) - 1
     return max(0, min(wanted, available))
 
 
@@ -189,13 +189,15 @@ class LLMClient:
         # Trim the reserved completion to whatever this prompt leaves room for.
         # Without this a slightly longer document 413s where a shorter one succeeded,
         # and the failure looks like a quota problem rather than a sizing bug.
+        ceiling = self.provider.tpm_ceiling
         prompt_chars = sum(len(str(m.get("content", ""))) for m in messages)
-        budget = fit_completion_budget(prompt_chars, max_tokens)
+        budget = fit_completion_budget(prompt_chars, max_tokens, ceiling)
         if budget < MIN_COMPLETION_TOKENS:
             raise LLMUnavailable(
-                f"this document needs a {estimate_tokens(str(prompt_chars))}-token prompt, "
-                f"which leaves only {budget} tokens for the reply against a "
-                f"{TPM_CEILING}/min ceiling. Split the document or use a paid tier."
+                f"this request needs about {estimate_tokens(' ' * prompt_chars)} prompt "
+                f"tokens, leaving only {budget} for the reply against {self.provider.name}'s "
+                f"{ceiling}/min ceiling. Split the input, or switch to a provider with a "
+                "higher limit."
             )
         max_tokens = budget
 
