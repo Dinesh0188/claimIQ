@@ -6,17 +6,26 @@ API is a real boundary and not decoration.
 
 from __future__ import annotations
 
+import logging
 import tempfile
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import Response
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse, Response
+from openai import APIError
 
 from claimiq import analytics, providers, trace
 from claimiq.config import ROOT, settings
 from claimiq.graph import audit
-from claimiq.llm import try_client
-from claimiq.nodes.extract import extract_bill
+from claimiq.llm import LLMUnavailable, try_client
+from claimiq.nodes.extract import (
+    ExtractedBill,
+    detect_document_type,
+    document_text,
+    extract_bill,
+    extract_policy_terms,
+)
 from claimiq.report import build_report
 from claimiq.retrieval.corpus import corpus_version, load_corpus
 from claimiq.retrieval.search import get_index
@@ -26,6 +35,22 @@ from claimiq.tools.waterfall import PROFILES, simulate_room_downgrade
 SAMPLES = ROOT / "data" / "samples"
 
 app = FastAPI(title="ClaimIQ", version="1.0.0")
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
+    """Never let a plain-text 500 reach the client.
+
+    FastAPI's default renders unhandled exceptions as `Internal Server Error` in
+    text/plain. The UI calls .json() on the response, so the real cause was replaced by
+    a JSON parse error. Structured JSON here means the screen always shows what actually
+    went wrong.
+    """
+    logging.getLogger("claimiq").exception("unhandled error on %s", request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"{type(exc).__name__}: {exc}", "path": request.url.path},
+    )
 
 
 @app.get("/health")
@@ -100,23 +125,114 @@ def simulate(packet: ClaimPacket, profile: str = "typical") -> dict:
     return {"applicable": True, "result": downgraded.model_dump(mode="json"), "gain": str(gain)}
 
 
-@app.post("/api/extract-pdf")
-async def extract_pdf(file: UploadFile = File(...)) -> dict:
-    """Vision-LLM extraction of a bill PDF into structured line items."""
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(400, "expected a .pdf upload")
+ACCEPTED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".tiff", ".tif", ".bmp"}
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        tmp.write(await file.read())
-        tmp_path = Path(tmp.name)
+METHOD_LABEL = {
+    "text_layer": "parsed directly from the PDF's table — exact, no model",
+    "table+llm": "table structure detected, rows read from cells",
+    "ocr+llm": "read with on-device OCR",
+    "vision": "read by the vision model",
+    "classified": "recognised as a supporting document — no line items expected",
+    "policy": "policy schedule — settlement terms read from it",
+}
 
+
+@app.post("/api/extract")
+@app.post("/api/extract-pdf")  # legacy alias
+async def extract(file: UploadFile = File(...)) -> dict:
+    """Turn an uploaded bill into structured line items.
+
+    Everything that can fail lives inside the try, including the upload read and the
+    tempfile write. Both used to sit outside it, so a failure there escaped as an
+    unhandled exception -- which FastAPI renders as plain-text "Internal Server Error",
+    which the UI then fed to .json(), producing the useless
+    "Expecting value: line 1 column 1" instead of the actual cause.
+
+    The heavy work is pushed to a worker thread. OCR is synchronous and CPU-bound --
+    roughly 15 seconds a page -- and calling it directly from an `async def` handler
+    blocks uvicorn's event loop, so the entire API stops answering mid-upload. The
+    symptom is nasty and misleading: the UI's own /health poll times out and the page
+    appears frozen, as if the browser had crashed rather than the server being busy.
+    """
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in ACCEPTED_SUFFIXES:
+        raise HTTPException(
+            400,
+            f"unsupported file type {suffix or '(none)'}. "
+            f"Accepted: {', '.join(sorted(ACCEPTED_SUFFIXES))}",
+        )
+
+    tmp_path: Path | None = None
     try:
-        items, extracted = extract_bill(tmp_path)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(422, f"extraction failed: {exc}") from exc
-    finally:
-        tmp_path.unlink(missing_ok=True)
+        payload = await file.read()
+        if not payload:
+            raise HTTPException(400, "the uploaded file is empty")
 
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(payload)
+            tmp_path = Path(tmp.name)
+
+        doc_id, doc_label = await run_in_threadpool(
+            lambda: detect_document_type(document_text(tmp_path))
+        )
+
+        # Classification never gates extraction. Keyword guessing is weak evidence --
+        # a bill listing "Vascular graft (implant)" was once scored as an implant
+        # invoice and returned zero rows -- whereas actually finding a priced table is
+        # strong evidence. So always try to extract, then let the result correct the guess.
+        policy_terms = None
+        if doc_id == "DOC-POLICY":
+            # The schedule states sum insured, room limit and co-pay outright. Reading
+            # them beats making the user retype what they just uploaded.
+            found = await run_in_threadpool(extract_policy_terms, tmp_path)
+            policy_terms = found.model_dump() if found else None
+            items, extracted = [], ExtractedBill(method="policy")
+        else:
+            try:
+                items, extracted = await run_in_threadpool(extract_bill, tmp_path)
+            except (APIError, LLMUnavailable) as exc:
+                # The provider being unreachable is not "this document is unreadable".
+                # Saying "check the page is straight" when the real problem is a 403
+                # sends the user to fix their scanner instead of their API key.
+                raise HTTPException(
+                    503,
+                    f"the AI provider could not be reached, so scans and photos cannot "
+                    f"be read right now: {exc}. Native PDFs with a text layer still work.",
+                ) from exc
+            except Exception:  # noqa: BLE001 - a non-bill legitimately has no table
+                items, extracted = [], ExtractedBill(method="classified")
+
+        if items:
+            # It priced a table, so it is the bill whatever the keywords suggested.
+            doc_id, doc_label = "DOC-FINAL-BILL", "Itemised bill"
+        elif doc_id is None:
+            raise HTTPException(
+                422,
+                "could not read this document. If it is a photo or scan, check the page "
+                "is straight, in focus and evenly lit.",
+            )
+        else:
+            extracted.method = "classified"
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(422, f"{type(exc).__name__}: {exc}") from exc
+    finally:
+        # Best effort. Temp cleanup must never be able to fail a request that already
+        # produced a good result -- that is exactly what WinError 32 did here.
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                logging.getLogger("claimiq").warning("could not remove temp %s", tmp_path)
+
+    kind = (
+        "Native PDF"
+        if extracted.method == "text_layer"
+        else "Scanned PDF"
+        if suffix == ".pdf"
+        else "Image"
+    )
     return {
         "line_items": [i.model_dump(mode="json") for i in items],
         "room_category": extracted.room_category,
@@ -124,6 +240,12 @@ async def extract_pdf(file: UploadFile = File(...)) -> dict:
         "room_days": extracted.room_days,
         "low_confidence": sum(1 for i in items if i.extract_confidence < 0.7),
         "method": extracted.method,
+        "file_kind": kind,
+        "how": METHOD_LABEL.get(extracted.method, extracted.method),
+        "filename": file.filename,
+        "document_id": doc_id,
+        "document_label": doc_label,
+        "policy_terms": policy_terms,
     }
 
 

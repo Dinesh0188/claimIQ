@@ -9,11 +9,11 @@ import plotly.express as px
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from _shared import api_get, hero, rupees  # noqa: E402
+from _shared import api_get, page_header, rupees  # noqa: E402
 
-hero(
-    "Leakage dashboard",
-    "Where the money goes across the whole book of claims — not one bill at a time",
+page_header(
+    "Where the money goes",
+    "Across every claim audited, not one bill at a time.",
 )
 
 summary = api_get("/api/analytics/summary")
@@ -25,11 +25,8 @@ if summary.get("empty"):
     st.stop()
 
 st.caption(
-    f"**Data provenance:** {summary['claims']} claims audited · "
-    f"{summary['ai_claims']} through the full LLM agent · "
-    f"{summary['claims'] - summary['ai_claims']} through the deterministic engine only. "
-    "Running every claim through the agent would exceed free-tier rate limits, so the "
-    "split is stated rather than glossed. All data is synthetic."
+    f"{summary['claims']} claims · {summary['ai_claims']} read by AI, "
+    f"{summary['claims'] - summary['ai_claims']} by deterministic rules · synthetic data"
 )
 
 c1, c2, c3, c4 = st.columns(4)

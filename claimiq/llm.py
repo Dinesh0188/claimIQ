@@ -124,8 +124,14 @@ class LLMClient:
         images: list[str] | None = None,
         temperature: float = 0.0,
         max_retries: int = 2,
+        max_tokens: int = MAX_COMPLETION_TOKENS,
     ) -> T:
-        """Generate JSON conforming to `schema`, re-prompting on validation failure."""
+        """Generate JSON conforming to `schema`, re-prompting on validation failure.
+
+        `max_tokens` is per call site on purpose -- a bill table needs a far longer
+        completion than a verdict batch, and reserved tokens count against the
+        per-minute budget rather than being free headroom.
+        """
         if images and not self.vision_model:
             raise LLMUnavailable(
                 f"provider {self.provider.name!r} has no vision model configured, so it "
@@ -153,7 +159,7 @@ class LLMClient:
         last_error: Exception | None = None
 
         for attempt in range(1, max_retries + 2):
-            raw, usage = self._complete(model, messages, temperature)
+            raw, usage = self._complete(model, messages, temperature, max_tokens)
             try:
                 parsed = schema.model_validate_json(_json_only(raw))
             except ValidationError as exc:

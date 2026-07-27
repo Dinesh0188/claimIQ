@@ -8,19 +8,13 @@ from pathlib import Path
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from _shared import api_post, hero  # noqa: E402
+from _shared import api_post, page_header  # noqa: E402
 
 health = st.session_state["health"]
-hero("Ask the portfolio", "Plain-English questions, guardrailed SQL, real answers")
-
-st.caption(
-    "Your question is turned into SQLite by the model, then **validated before it runs**: "
-    "single statement, SELECT only, allow-listed tables, executed on a read-only "
-    "connection. The model's good behaviour is not the security control."
-)
+page_header("Ask about your claims", "Plain English. The query it runs is shown to you.")
 
 if not (health["key_present"] and health["ai_enabled"]):
-    st.warning("This page needs an LLM. Set `LLM_API_KEY` in `.env`.")
+    st.warning("This page needs a model provider. Add a key in `providers.json`.")
     st.stop()
 
 EXAMPLES = [

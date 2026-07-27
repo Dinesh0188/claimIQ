@@ -1,8 +1,7 @@
-"""ClaimIQ — audit screen."""
+"""Audit — upload a claim packet, see what will be deducted before the TPA does."""
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
@@ -11,140 +10,241 @@ import requests
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from _shared import API, TAGLINE, api_get, api_post, hero, note, rupees  # noqa: E402
-
-health = st.session_state["health"]
-hero("ClaimIQ", TAGLINE, tags=True)
-
-profiles = api_get("/api/profiles")
-profile = st.sidebar.selectbox(
-    "Insurer profile",
-    list(profiles),
-    index=list(profiles).index("typical"),
-    format_func=lambda p: profiles[p]["label"],
+from _shared import (  # noqa: E402
+    API,
+    api_get,
+    api_post,
+    api_upload,
+    page_header,
+    rupees,
 )
-st.sidebar.caption(profiles[profile]["note"])
 
-note(
-    "Audit a hospital claim packet <b>before</b> it goes to the TPA. Three numbers come "
-    "out: what the insurer will likely settle, what the patient owes, and — the one "
-    "nobody else shows you — what the <b>hospital</b> is quietly writing off on every "
-    "claim it files."
-)
+ACCEPTED = ["pdf", "png", "jpg", "jpeg", "webp", "tiff", "tif", "bmp"]
+SEVERITY_ICON = {"BLOCKER": "🔴", "QUERY_LIKELY": "🟠", "ADVISORY": "⚪"}
 
 st.session_state.setdefault("packet", None)
 st.session_state.setdefault("result", None)
+st.session_state.setdefault("uploads", [])
 
-tab_sample, tab_pdf = st.tabs(["Load a sample", "Upload a bill PDF"])
+page_header(
+    "Claim audit",
+    "Upload a claim packet and see the deductions before it goes to the TPA.",
+)
 
-with tab_sample:
-    samples = api_get("/api/samples")
-    col_a, col_b = st.columns([3, 1])
-    name = col_a.selectbox("Sample claim", samples, index=0)
-    col_b.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-    if col_b.button("Run audit", type="primary", use_container_width=True):
-        packet = api_get(f"/api/samples/{name}")
-        with st.spinner("Running the agent…"):
-            st.session_state.packet = packet
-            st.session_state.result = api_post("/api/audit", packet)
+profiles = api_get("/api/profiles")
+samples = api_get("/api/samples")
 
-with tab_pdf:
-    st.caption(
-        "A native PDF's ruled table is parsed directly — exact, instant, no model. "
-        "Scans with no text layer are rasterised and read by the vision model instead. "
-        "Generate test bills of both kinds with `python scripts/gen_bill_pdf.py --scan`."
+
+# --- input ----------------------------------------------------------------
+
+source = st.segmented_control(
+    "Source", ["Upload documents", "Try a sample"], default="Upload documents",
+    label_visibility="collapsed",
+)
+
+if source == "Upload documents":
+    files = st.file_uploader(
+        "Bill, discharge summary, claim form, reports — add whatever you have",
+        type=ACCEPTED,
+        accept_multiple_files=True,
+        help="PDF or photo. Scans and phone pictures are read with on-device OCR.",
     )
-    upload = st.file_uploader("Hospital bill (PDF)", type=["pdf"])
-    base = st.selectbox(
-        "Policy terms to apply", samples, index=0, key="pdf_policy",
-        help="The bill supplies line items; policy terms come from this sample.",
-    )
-    if upload and st.button("Extract and audit", type="primary"):
-        with st.spinner("Vision model reading the bill…"):
+
+    if st.button("Read documents", type="primary", disabled=not files):
+        summaries, failures = [], []
+        with st.status(f"Reading {len(files)} document(s)…", expanded=True) as status:
+            for f in files:
+                st.write(f"Reading **{f.name}**")
+                try:
+                    summaries.append(api_upload("/api/extract", f.name, f.getvalue()))
+                except Exception as exc:  # noqa: BLE001
+                    failures.append(f"{f.name}: {exc}")
+            status.update(
+                label="Some documents could not be read" if failures else "Documents read",
+                state="error" if failures else "complete",
+                expanded=False,
+            )
+        st.session_state.uploads = summaries
+        st.session_state.upload_errors = failures
+        st.session_state.result = None
+
+    for message in st.session_state.get("upload_errors") or []:
+        st.error(message)
+
+    uploads = st.session_state.uploads
+    if uploads:
+        line_items = [i for u in uploads for i in u["line_items"]]
+        attached = [u["document_id"] for u in uploads if u["document_id"]]
+
+        # A policy schedule states these outright. Prefer the document over a default,
+        # and say which is which -- a silently-applied wrong room limit moves the
+        # settlement by lakhs.
+        found = next((u["policy_terms"] for u in uploads if u.get("policy_terms")), None)
+
+        def from_doc(field: str, fallback: int) -> tuple[int, bool]:
+            raw = (found or {}).get(field)
             try:
-                extracted = requests.post(
-                    f"{API}/api/extract-pdf",
-                    files={"file": (upload.name, upload.getvalue(), "application/pdf")},
-                    timeout=300,
-                ).json()
-            except Exception as exc:  # noqa: BLE001
-                st.error(f"Extraction failed: {exc}")
-                st.stop()
+                return int(float(raw)), True
+            except (TypeError, ValueError):
+                return fallback, False
 
-        if "line_items" not in extracted:
-            st.error(extracted.get("detail", "Extraction failed."))
-            st.stop()
+        si, si_doc = from_doc("sum_insured", 500_000)
+        cap, cap_doc = from_doc("room_rent_cap_per_day", 6_000)
+        cp, cp_doc = from_doc("copay_percent", 10)
 
-        packet = api_get(f"/api/samples/{base}")
-        packet["line_items"] = extracted["line_items"]
-        packet["claim_id"] = f"UPLOAD-{upload.name.rsplit('.', 1)[0]}"[:40]
-        if extracted.get("room_rate_per_day"):
-            packet["room_stay"]["rate_per_day"] = extracted["room_rate_per_day"]
-        if extracted.get("room_days"):
-            packet["room_stay"]["days"] = extracted["room_days"]
+        st.markdown("###### Policy terms")
+        if found:
+            st.caption(
+                "Read from your policy schedule — edit any value if the document is "
+                "out of date."
+            )
+        else:
+            st.caption(
+                "No policy schedule uploaded, so these are defaults. Upload the schedule "
+                "and the real terms are read from it."
+            )
 
-        how = (
-            "parsed directly from the PDF's ruled table — no model needed"
-            if extracted.get("method") == "text_layer"
-            else "read by the vision model (this PDF has no text layer)"
-        )
-        st.success(
-            f"Extracted {len(extracted['line_items'])} line items, {how}. "
-            f"{extracted['low_confidence']} row(s) below 0.7 confidence."
-        )
-        with st.spinner("Running the agent…"):
+        tick = "  ✓ from document"
+        p1, p2, p3, p4 = st.columns(4)
+        sum_insured = p1.number_input(
+            "Sum insured (₹)" + (tick if si_doc else ""), 50_000, 50_000_000, si, 50_000)
+        room_cap = p2.number_input(
+            "Room limit (₹/day)" + (tick if cap_doc else ""), 0, 200_000, cap, 500,
+            help="0 means the policy sets no room rent limit.")
+        copay = p3.number_input("Co-pay (%)" + (tick if cp_doc else ""), 0, 50, cp, 5)
+        claim_type = p4.selectbox("Claim type", ["cashless", "reimbursement"])
+
+        if not line_items:
+            st.warning(
+                "None of these documents contained an itemised bill, so there are no "
+                "charges to audit. Add the hospital bill."
+            )
+        elif st.button("Run audit", type="primary"):
+            with st.status("Auditing…", expanded=True) as status:
+                st.write("Classifying charges against the rule catalog")
+                packet = api_get(f"/api/samples/{samples[0]}")
+                for index, item in enumerate(line_items, 1):
+                    item["line_no"] = index
+                packet["line_items"] = line_items
+                packet["claim_id"] = f"UPLOAD-{Path(uploads[0]['filename']).stem}"[:40]
+                packet["policy"]["sum_insured"] = str(sum_insured)
+                packet["policy"]["balance_sum_insured"] = str(sum_insured)
+                packet["policy"]["room_rent_cap_per_day"] = str(room_cap) if room_cap else None
+                packet["policy"]["copay_percent"] = str(copay)
+                packet["context"]["claim_type"] = claim_type
+                packet["context"]["documents_attached"] = attached
+
+                st.write("Computing deductions and verifying")
+                st.session_state.packet = packet
+                st.session_state.result = api_post("/api/audit", packet)
+                status.update(label="Audit complete", state="complete", expanded=False)
+
+else:
+    c1, c2 = st.columns([3, 1])
+    name = c1.selectbox("Sample claim", samples, label_visibility="collapsed")
+    c2.markdown("")
+    if c2.button("Run audit", type="primary", use_container_width=True):
+        packet = api_get(f"/api/samples/{name}")
+        with st.status("Auditing…", expanded=False) as status:
             st.session_state.packet = packet
             st.session_state.result = api_post("/api/audit", packet)
+            st.session_state.uploads = []
+            status.update(label="Audit complete", state="complete")
+
+
+# --- what was read --------------------------------------------------------
+
+if st.session_state.uploads:
+    st.markdown("###### Documents read")
+    for got in st.session_state.uploads:
+        rows = len(got["line_items"])
+        detail = f"{rows} line items" if rows else got["document_label"]
+        st.markdown(
+            f'<div class="ciq-file"><span>{got["filename"]}</span>'
+            f'<span class="ciq-meta"><span class="ciq-tag">{got["file_kind"]}</span>'
+            f"&nbsp;&nbsp;{detail}</span></div>",
+            unsafe_allow_html=True,
+        )
+    low = sum(g["low_confidence"] for g in st.session_state.uploads)
+    if low:
+        st.caption(
+            f"{low} row(s) were hard to read and are marked low-confidence — check them "
+            "in the line item table below."
+        )
 
 result = st.session_state.result
 if result is None:
-    st.info("Load a sample or upload a bill to begin.")
+    # Shown only before a result exists. Once there are numbers on screen the numbers
+    # are the argument, and this comes down.
+    st.markdown(
+        """
+<div class="ciq-value">
+  <div class="ciq-value-head">The deduction you find out about too late</div>
+  <p>A hospital submits a claim, waits three weeks, and gets back less than it billed.
+  By then the patient has gone home and the money is written off. ClaimIQ reads the
+  packet <b>before</b> it goes to the TPA and splits the bill three ways.</p>
+  <div class="ciq-value-grid">
+    <div class="ciq-value-card ciq-vc-green">
+      <div class="ciq-vc-label">The insurer pays</div>
+      <div class="ciq-vc-text">What actually settles once room limits, sub-limits and
+      co-pay are applied — shown as a range, because insurers read the rules differently.</div>
+    </div>
+    <div class="ciq-value-card ciq-vc-blue">
+      <div class="ciq-vc-label">The patient pays</div>
+      <div class="ciq-vc-text">Optional items and policy deductions. Worth saying at
+      admission, not at the discharge counter.</div>
+    </div>
+    <div class="ciq-value-card ciq-vc-red">
+      <div class="ciq-vc-label">The hospital absorbs</div>
+      <div class="ciq-vc-text">Charges already covered by the room or procedure rate.
+      Billed anyway, paid by nobody — and it repeats on every claim until someone
+      notices. This is the number no other tool shows you.</div>
+    </div>
+  </div>
+  <p class="ciq-value-foot">Upload the bill and whatever else you have — discharge
+  summary, claim form, policy schedule, reports. Scans and phone photos are read on
+  this machine. Every deduction cites the rule it came from.</p>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
     st.stop()
 
+
+# --- results --------------------------------------------------------------
+
+profile = st.session_state.get("profile", "typical")
 wf = result["profiles"][profile]
 gross = float(result["gross_bill"])
 settlements = [float(p["projected_settlement"]) for p in result["profiles"].values()]
 
-# --- headline -------------------------------------------------------------
+st.divider()
 
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Gross bill", rupees(gross))
-c2.metric("Est. settlement", rupees(wf["projected_settlement"]))
-c3.metric("Patient liability", rupees(wf["patient_liability"]))
-with c4:
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("Gross bill", rupees(gross))
+m2.metric("Likely settlement", rupees(wf["projected_settlement"]))
+m3.metric("Patient pays", rupees(wf["patient_liability"]))
+with m4:
     st.markdown('<div class="ciq-loss">', unsafe_allow_html=True)
     st.metric(
-        "Hospital write-off",
-        rupees(wf["hospital_writeoff"]),
-        help="Lists II/III/IV — items the hospital billed that should have been folded "
-        "into room, procedure or treatment cost. This leaks on every claim they file.",
+        "Hospital absorbs", rupees(wf["hospital_writeoff"]),
+        help="Items already covered by room, procedure or treatment charges. The "
+        "hospital cannot bill these to the insurer or the patient — this loss repeats "
+        "on every claim until the billing template is corrected.",
     )
     st.markdown("</div>", unsafe_allow_html=True)
 
 st.caption(
-    f"Estimated settlement range across insurer profiles: "
-    f"**{rupees(min(settlements))} – {rupees(max(settlements))}**. "
-    f"Showing *{profiles[profile]['label']}*. Corpus `{result['corpus_version']}`."
+    f"Range across insurer interpretations: {rupees(min(settlements))} – "
+    f"{rupees(max(settlements))}.  ·  "
+    f"{'Charges read by AI' if result['ai_used'] else 'Deterministic rules only'}  ·  "
+    f"{'Checks passed' if result['verify_passed'] else 'Checks FAILED'}"
 )
-
-status = st.columns(3)
-status[0].caption(f"AI pipeline: {'yes' if result['ai_used'] else 'no (deterministic)'}")
-status[1].caption(
-    f"Verifier: {'passed' if result['verify_passed'] else 'FAILED'} · repairs {result['repair_count']}"
-)
-status[2].caption(f"Unmapped items: {result['unmapped_count']}")
 
 for problem in result["verify_problems"]:
-    st.error(f"Verifier: {problem}")
-
+    st.error(f"Verification: {problem}")
 for degradation in result.get("errors") or []:
     st.warning(degradation)
-
-if result["unmapped_count"]:
-    st.warning(
-        f"{result['unmapped_count']} line item(s) could not be matched to the catalog. "
-        "They were **not** deducted — review them manually."
-    )
 
 # --- waterfall ------------------------------------------------------------
 
@@ -152,117 +252,101 @@ patient_items = sum(
     float(f["deducted_amount"]) for f in result["findings"] if f["bearer"] == "PATIENT"
 )
 labels, values, measures = ["Gross bill"], [gross], ["absolute"]
-
 if patient_items:
-    labels.append("List I (patient)")
+    labels.append("Patient items")
     values.append(-patient_items)
     measures.append("relative")
 if float(wf["hospital_writeoff"]):
-    labels.append("Lists II–IV (hospital)")
+    labels.append("Hospital absorbs")
     values.append(-float(wf["hospital_writeoff"]))
     measures.append("relative")
 for d in wf["policy_deductions"]:
     labels.append(d["step"].replace("_", " ").title())
     values.append(-float(d["amount"]))
     measures.append("relative")
-labels.append("Est. settlement")
+labels.append("Settlement")
 values.append(0)
 measures.append("total")
 
 fig = go.Figure(
     go.Waterfall(
         orientation="v", measure=measures, x=labels, y=values,
-        connector={"line": {"color": "rgba(128,128,128,0.4)"}},
+        connector={"line": {"color": "rgba(148,163,184,.5)"}},
         decreasing={"marker": {"color": "#d1495b"}},
-        totals={"marker": {"color": "#2a9d8f"}},
+        totals={"marker": {"color": "#0e7c6b"}},
     )
 )
-fig.update_layout(height=420, margin=dict(t=30, b=10), showlegend=False)
+fig.update_layout(
+    height=360, margin=dict(t=10, b=10, l=0, r=0), showlegend=False,
+    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+)
 st.plotly_chart(fig, use_container_width=True)
-
-# --- room downgrade -------------------------------------------------------
 
 try:
     sim = api_post("/api/simulate-room", st.session_state.packet, profile=profile)
     if sim.get("applicable"):
         st.success(
-            f"**Room downgrade simulator** — had the patient taken a room inside the "
-            f"policy cap, the estimated settlement would rise by "
-            f"**{rupees(sim['gain'])}** (to {rupees(sim['result']['projected_settlement'])}). "
-            "One conversation at admission is worth that much to this family."
+            f"A room within the policy limit would have settled "
+            f"**{rupees(sim['gain'])} more** — worth telling the patient at admission."
         )
 except Exception:  # noqa: BLE001
     pass
 
-# --- findings -------------------------------------------------------------
 
-st.subheader("Line item audit")
-only_deducted = st.checkbox("Show only deducted and unmatched items")
-rows = [
-    {
-        "#": f["line_no"],
-        "Description": f["description"],
-        "Head": f["head"],
-        "Amount": float(f["amount"]),
-        "Classification": f["classification"],
-        "Borne by": f["bearer"],
-        "Deducted": float(f["deducted_amount"]),
-        "Cited": f["cited_chunk_id"] or "",
-        "Conf": round(f["confidence"], 2),
-        "Reason": f["reason"],
-    }
-    for f in result["findings"]
-    if not only_deducted
-    or float(f["deducted_amount"]) > 0
-    or f["classification"] == "UNMAPPED"
-]
-st.dataframe(rows, use_container_width=True, hide_index=True)
+# --- detail ---------------------------------------------------------------
 
-# --- readiness ------------------------------------------------------------
+tab_items, tab_docs, tab_actions = st.tabs(["Line items", "Readiness", "What to do"])
 
-left, right = st.columns(2)
-with left:
-    st.subheader("Missing documents")
-    if not result["document_gaps"]:
-        st.success("No gaps detected.")
-    for gap in result["document_gaps"]:
-        icon = {"BLOCKER": "🔴", "QUERY_LIKELY": "🟠", "ADVISORY": "⚪"}[gap["severity"]]
-        st.markdown(f"{icon} **{gap['name']}** — {gap['reason']}")
-
-with right:
-    st.subheader("Consistency flags")
-    if not result["consistency_flags"]:
-        st.success("No inconsistencies detected.")
-    for flag in result["consistency_flags"]:
-        icon = {"BLOCKER": "🔴", "QUERY_LIKELY": "🟠", "ADVISORY": "⚪"}[flag["severity"]]
-        st.markdown(f"{icon} `{flag['check_id']}` {flag['message']}")
-
-# --- narrative ------------------------------------------------------------
-
-st.subheader("What to do about it")
-st.caption(
-    "Narrative written by the model from the computed figures; the verifier rejects any "
-    "number it did not receive." if result["ai_used"] else "Deterministic narrative — AI is off."
-)
-st.markdown(result["narrative"])
-for i, action in enumerate(result["action_list"], 1):
-    st.markdown(f"**{i}.** {action}")
-
-# --- export ---------------------------------------------------------------
-
-st.divider()
-if st.button("Generate audit report (PDF)"):
-    with st.spinner("Rendering…"):
-        pdf = requests.post(
-            f"{API}/api/report", json=st.session_state.packet,
-            params={"profile": profile}, timeout=300,
-        )
-    st.download_button(
-        "Download audit report",
-        data=pdf.content,
-        file_name=f"{result['claim_id']}-audit.pdf",
-        mime="application/pdf",
+with tab_items:
+    only_flagged = st.checkbox("Only show deducted and unmatched items")
+    st.dataframe(
+        [
+            {
+                "#": f["line_no"],
+                "Item": f["description"],
+                "Category": f["head"].title(),
+                "Amount": float(f["amount"]),
+                "Verdict": f["classification"].replace("LIST_", "List ").replace("_", " ").title(),
+                "Cost falls on": f["bearer"].title(),
+                "Deducted": float(f["deducted_amount"]),
+                "Why": f["reason"],
+            }
+            for f in result["findings"]
+            if not only_flagged
+            or float(f["deducted_amount"]) > 0
+            or f["classification"] == "UNMAPPED"
+        ],
+        use_container_width=True, hide_index=True,
     )
 
-with st.expander("Raw result (JSON)"):
-    st.code(json.dumps(result, indent=2), language="json")
+with tab_docs:
+    d1, d2 = st.columns(2)
+    with d1:
+        st.markdown("**Missing documents**")
+        if not result["document_gaps"]:
+            st.success("Nothing missing.")
+        for gap in result["document_gaps"]:
+            st.markdown(f"{SEVERITY_ICON[gap['severity']]} **{gap['name']}** — {gap['reason']}")
+    with d2:
+        st.markdown("**Inconsistencies**")
+        if not result["consistency_flags"]:
+            st.success("None found.")
+        for flag in result["consistency_flags"]:
+            st.markdown(f"{SEVERITY_ICON[flag['severity']]} {flag['message']}")
+
+with tab_actions:
+    st.markdown(result["narrative"])
+    for i, action in enumerate(result["action_list"], 1):
+        st.markdown(f"**{i}.** {action}")
+
+    st.divider()
+    if st.button("Build audit report (PDF)"):
+        with st.spinner("Rendering…"):
+            pdf = requests.post(
+                f"{API}/api/report", json=st.session_state.packet,
+                params={"profile": profile}, timeout=600,
+            )
+        st.download_button(
+            "Download report", data=pdf.content,
+            file_name=f"{result['claim_id']}-audit.pdf", mime="application/pdf",
+        )

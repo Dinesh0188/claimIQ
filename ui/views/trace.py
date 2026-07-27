@@ -9,19 +9,13 @@ import plotly.graph_objects as go
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from _shared import api_get, hero  # noqa: E402
+from _shared import api_get, page_header  # noqa: E402
 
-hero("Agent trace", "Every node, every token, and the self-correction loop firing")
-
-st.caption(
-    "Every node is instrumented. The `explain → verify → explain` cycle is the "
-    "self-correction loop: the verifier reconciles the model's narrative against the "
-    "deterministic tool output and re-prompts when they disagree."
-)
+page_header("How this claim was processed", "Each step, what it cost, and what it checked.")
 
 result = st.session_state.get("result")
 if result is None:
-    st.info("Run an audit on the **Audit** page first.")
+    st.info("Run an audit first — this page shows how that claim was processed.")
     st.stop()
 
 try:

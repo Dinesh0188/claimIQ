@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from claimiq.llm import EXTRACTION_MAX_TOKENS, LLMClient, LLMUnavailable, try_client
 from claimiq.state import BillLineItem, Head
 
-MAX_PAGES = 6
+MAX_PAGES = 20
 
 # KNOWN CONSTRAINT -- vision extraction is unavailable on Groq's free tier.
 #
@@ -107,11 +107,9 @@ def pdf_to_images(path: Path, max_pages: int = MAX_PAGES, bands: int = BANDS) ->
     rows extracts cleanly. Bands overlap slightly so a row straddling a cut is not
     lost -- duplicates are removed downstream.
     """
-    doc = pdfium.PdfDocument(str(path))
     urls: list[str] = []
 
-    for index in range(min(len(doc), max_pages)):
-        image = doc[index].render(scale=RENDER_SCALE).to_pil()
+    for image in _page_images(path, RENDER_SCALE, max_pages):
         if max(image.size) > MAX_EDGE_PX:
             ratio = MAX_EDGE_PX / max(image.size)
             image = image.resize(
@@ -239,10 +237,8 @@ def ocr_pages(path: Path, max_pages: int = MAX_PAGES) -> str:
     if engine is None:
         return ""
 
-    doc = pdfium.PdfDocument(str(path))
     lines: list[str] = []
-    for index in range(min(len(doc), max_pages)):
-        image = doc[index].render(scale=OCR_SCALE).to_pil().convert("RGB")
+    for image in _page_images(path, OCR_SCALE, max_pages):
         try:
             result, _ = engine(np.array(image))
         except Exception:  # noqa: BLE001 - a bad page must not kill the upload
@@ -250,6 +246,130 @@ def ocr_pages(path: Path, max_pages: int = MAX_PAGES) -> str:
         if result:
             lines.extend(str(row[1]) for row in result)
     return "\n".join(lines)
+
+
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".tiff", ".tif", ".bmp"}
+
+# A real claim packet is 8-10 documents, not one bill. Recognising which is which
+# turns the document checklist from a form the user fills in by hand into something
+# the upload answers by itself.
+#
+# Deliberately keyword-based, not a model call: these documents carry standard
+# headings, the cost is zero, and a wrong guess is visible and correctable in the UI.
+DOCUMENT_SIGNATURES: list[tuple[str, str, tuple[str, ...]]] = [
+    ("DOC-FINAL-BILL", "Itemised bill", ("itemized bill", "itemised bill", "final bill", "total amount due")),
+    ("DOC-DISCHARGE-SUMMARY", "Discharge summary", ("discharge summary", "condition on discharge", "final diagnosis")),
+    ("DOC-CLAIM-FORM", "Claim form", ("claim form", "insured details", "declaration", "hereby declare")),
+    ("DOC-PREAUTH-ENHANCEMENT", "Pre-authorisation letter", ("pre-authorization", "pre-authorisation", "preauth", "authorization no")),
+    ("DOC-IMPLANT-INV", "Implant invoice", ("implant", "batch no", "hsn code", "ligation clip")),
+    ("DOC-INVESTIGATION-REPORTS", "Investigation report", ("laboratory report", "pathology", "reference range", "haematology", "hematology")),
+    ("DOC-OT-NOTES", "OT notes", ("operation theatre notes", "ot notes", "operative notes", "procedure performed")),
+    ("DOC-PHARMACY-BILLS", "Pharmacy bill", ("pharmacy bill", "medicine bill", "drug charges")),
+    ("DOC-MLC", "MLC / FIR copy", ("medico-legal", "medico legal", "mlc", "first information report")),
+    ("DOC-ID-PROOF", "ID proof", ("aadhaar", "aadhar", "pan card", "passport no", "identity proof")),
+    ("DOC-INDOOR-PAPERS", "Indoor case papers", ("indoor case", "case sheet", "nursing notes", "vitals chart")),
+    ("DOC-POLICY", "Policy schedule", ("policy schedule", "sum insured", "important coverages", "waiting period")),
+    ("DOC-DEDUCTION-SUMMARY", "TPA deduction summary", ("deduction summary", "reason for deduction", "net payable")),
+]
+
+
+def detect_document_type(text: str) -> tuple[str | None, str]:
+    """Best-guess document id and a human label, from the document's own headings.
+
+    Returns (None, "Unrecognised") rather than guessing when nothing matches -- an
+    unrecognised document is shown to the user, not silently dropped.
+    """
+    haystack = " ".join(text.lower().split())
+    best: tuple[int, str, str] | None = None
+
+    for doc_id, label, keywords in DOCUMENT_SIGNATURES:
+        hits = sum(1 for k in keywords if k in haystack)
+        if hits and (best is None or hits > best[0]):
+            best = (hits, doc_id, label)
+
+    return (best[1], best[2]) if best else (None, "Unrecognised")
+
+
+POLICY_SYSTEM = """You read Indian health insurance policy schedules and extract the terms
+that determine how a claim is settled.
+
+Return only what the document actually states. Leave a field null rather than guessing —
+a wrong room limit changes the settlement by lakhs.
+
+- Amounts as plain digits: "PHP 500,000" or "Rs. 5,00,000" -> "500000". No symbols, no commas.
+- `room_rent_cap_per_day`: the per-day room limit. If stated as a percentage of sum
+  insured, compute it only if the sum insured is also on this page; otherwise null.
+- `copay_percent`: just the number. "10% of admissible claim" -> "10".
+- If the schedule says room rent is unlimited or has no cap, use "0"."""
+
+
+class ExtractedPolicy(BaseModel):
+    policy_no: str | None = None
+    insured_name: str | None = None
+    sum_insured: str | None = None
+    room_rent_cap_per_day: str | None = None
+    icu_cap_per_day: str | None = None
+    copay_percent: str | None = None
+    notes: str = Field(default="", description="Anything material the fields cannot hold")
+
+
+def extract_policy_terms(path: Path, client: LLMClient | None = None) -> ExtractedPolicy | None:
+    """Read settlement terms out of an uploaded policy schedule.
+
+    The schedule states the sum insured, room limit and co-pay outright. Asking the user
+    to retype numbers that are sitting in a document they just uploaded is busywork, and
+    letting a form default silently override the real contract is worse -- the room limit
+    alone moves the settlement by lakhs.
+    """
+    client = client or try_client()
+    if client is None:
+        return None
+
+    text = document_text(path, max_pages=4)
+    if len(text) < 80:
+        return None
+
+    try:
+        return client.structured(
+            node="policy",
+            system=POLICY_SYSTEM,
+            user=f"Policy schedule text:\n\n{text[:8000]}",
+            schema=ExtractedPolicy,
+        )
+    except Exception:  # noqa: BLE001 - a failed read falls back to the form defaults
+        return None
+
+
+def document_text(path: Path, max_pages: int = 3) -> str:
+    """Cheapest readable text for classification: text layer first, OCR only if bare."""
+    text = "\n".join(pdf_text_layer_pages(path, max_pages)).strip()
+    if len(text) >= 60:
+        return text
+    return ocr_pages(path, max_pages)
+
+
+def _page_images(path: Path, scale: float, max_pages: int = MAX_PAGES) -> list:
+    """Rasterise a document to RGB images. Handles PDFs and plain image files.
+
+    The `close()` is not optional on Windows. pypdfium2 holds the file open, and an
+    open file cannot be deleted -- so the caller's `finally: unlink()` raised
+    PermissionError (WinError 32) *after* extraction had already succeeded, and that
+    exception discarded a perfectly good result. Uploads appeared to do nothing.
+    """
+    from PIL import Image
+
+    if path.suffix.lower() in IMAGE_SUFFIXES:
+        with Image.open(path) as img:
+            return [img.convert("RGB").copy()]
+
+    doc = pdfium.PdfDocument(str(path))
+    try:
+        return [
+            doc[i].render(scale=scale).to_pil().convert("RGB")
+            for i in range(min(len(doc), max_pages))
+        ]
+    finally:
+        doc.close()
 
 
 @lru_cache(maxsize=1)
@@ -326,12 +446,20 @@ def pdf_text_layer_pages(path: Path, max_pages: int = MAX_PAGES) -> list[str]:
 def extract_bill(
     path: Path, client: LLMClient | None = None, force_vision: bool = False
 ) -> tuple[list[BillLineItem], ExtractedBill]:
-    """Text-layer table parse first; vision model when there is no text layer.
+    """Cheapest path that can actually read the document.
 
-    Returns the items plus the raw extraction, whose `method` records which path
-    ran so the UI and the benchmark can report it honestly.
+        native PDF   -> pdfplumber table parse   (exact, instant, no model)
+        scan / image -> on-device OCR -> model   (~1,500 tokens)
+        vision model -> only when explicitly forced; see the note at the top of
+                        this module for why it is unusable on a free tier.
+
+    Returns the items plus the raw extraction, whose `method` records which path ran
+    so the UI can state what actually happened rather than implying one route.
     """
-    if not force_vision:
+    is_image = path.suffix.lower() in IMAGE_SUFFIXES
+
+    # An image has no text layer to try, so skip straight to OCR.
+    if not force_vision and not is_image:
         items = extract_from_text_layer(path)
         if len(items) >= 3:
             return items, ExtractedBill(method="text_layer")
@@ -339,8 +467,8 @@ def extract_bill(
     client = client or try_client()
     if client is None:
         raise LLMUnavailable(
-            "This PDF has no usable text layer, so it needs OCR plus a model. "
-            "Set LLM_API_KEY, or upload the claim as JSON."
+            "This document has no readable text layer, so it needs OCR plus a model. "
+            "Add an API key in providers.json, or load a sample claim instead."
         )
 
     # Cheapest workable route for a scan: local OCR, then the ordinary chat model.
