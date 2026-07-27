@@ -346,6 +346,53 @@ far more cleanly than they ever would in practice.
 
 ---
 
+## ADR-015 — Table-structure OCR was tried, measured, and rejected
+
+**Problem.** On scans the OCR returns text fragments in reading order, and the model then
+has to infer which numbers belong to which bill line. That inference — not character
+recognition — is where extraction accuracy is lost. RapidOCR reads 23/23 amounts correctly;
+it is the row assembly that is fragile.
+
+**Alternatives considered.**
+
+*PaddleOCR / PP-StructureV3.* Best published accuracy (94.5% on OmniDocBench) and returns
+real cell coordinates. A dry-run resolve against this environment showed the true cost:
+**34 additional packages and a numpy downgrade from 2.5.1 to 2.3.5**, underneath a green
+59-test suite, to improve a path only reached on scanned uploads. Rejected on cost.
+
+*RapidTable (SLANet-plus).* The same structural benefit for **4 packages and no numpy
+change**, running on the onnxruntime already present. On paper the obvious choice, and it
+was installed and implemented.
+
+**Decision.** Neither. The scan path keeps RapidOCR fragments plus model reassembly.
+
+**Why — the measurement.** RapidTable was fed our own OCR output and asked for the grid.
+On `clean.pdf`, a bill with roughly 10 rows and 6 columns — about 60 cells — it returned
+**367 cells**. Under half the OCR fragments fell inside any detected cell (36 of 76), and
+single bill lines were split across grid rows: `"1 Room charges - Single AC"` landed in one
+row while `"Accommodation | 5 | 5,500.00 | 27,500.00"` landed in the next. Cropping to the
+table region first did not help; the result was the same at three different crops.
+
+The cause is a domain mismatch rather than a bug. SLANet is trained on academic tables
+(PubTabNet). A hospital bill carries a letterhead, a patient-details block and section
+headers like "ROOM & BOARD", and the model reads all of that as table structure.
+
+The incumbent it had to beat gets `clean.pdf` **8/8 rows with an exact ₹90,400 total**.
+Adopting RapidTable would have made extraction measurably worse.
+
+**Trade-off.** Row assembly stays the weakest link in the scan path, and it is still the
+right place to look for accuracy gains.
+
+**Consequence.** `rapid-table` was uninstalled rather than left in `requirements.txt`
+unused. A dependency kept "in case" is a dependency someone later assumes is load-bearing.
+
+The honest framing for an interview: *the plan said measure it and drop it if it lost, and
+it lost.* The next thing worth trying is not another OCR engine but giving the model the
+fragment **coordinates** it currently never sees — it is asked to rebuild a grid from text
+that has already been flattened into a single stream.
+
+---
+
 ## Patterns across these decisions
 
 **Measure before reaching for the expensive option.** ADR-009 and ADR-011 both rejected the
