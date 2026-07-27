@@ -165,6 +165,15 @@ CSS = f"""
   div[data-testid="stDataFrame"] {{ border: 1px solid {LINE}; border-radius: 12px; }}
   hr {{ border-color: {LINE}; }}
 
+  /* ---- sample divider ---- */
+  .ciq-or {{
+    display: flex; align-items: center; gap: 14px; margin: 26px 0 12px;
+    font-size: 12.5px; font-weight: 700; letter-spacing: .3px; color: {MUTED};
+  }}
+  .ciq-or::before, .ciq-or::after {{
+    content: ""; flex: 1; height: 1px; background: {LINE};
+  }}
+
   /* ---- value proposition, empty state only ---- */
   .ciq-value {{ margin-top: 26px; }}
   .ciq-value-head {{

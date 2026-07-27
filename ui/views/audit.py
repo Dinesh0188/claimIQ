@@ -37,12 +37,9 @@ samples = api_get("/api/samples")
 
 # --- input ----------------------------------------------------------------
 
-source = st.segmented_control(
-    "Source", ["Upload documents", "Try a sample"], default="Upload documents",
-    label_visibility="collapsed",
-)
-
-if source == "Upload documents":
+# One panel, no mode switch. Upload is the main path and the samples sit one click
+# below it, so nobody has to understand a mode before they can start.
+with st.container():
     files = st.file_uploader(
         "Bill, discharge summary, claim form, reports — add whatever you have",
         type=ACCEPTED,
@@ -139,12 +136,22 @@ if source == "Upload documents":
                 st.session_state.result = api_post("/api/audit", packet)
                 status.update(label="Audit complete", state="complete", expanded=False)
 
-else:
-    c1, c2 = st.columns([3, 1])
-    name = c1.selectbox("Sample claim", samples, label_visibility="collapsed")
-    c2.markdown("")
-    if c2.button("Run audit", type="primary", use_container_width=True):
-        packet = api_get(f"/api/samples/{name}")
+SAMPLE_LABEL = {
+    "billing_error": "Billing errors",
+    "cardiac": "Room-rent trap",
+    "clean": "Clean claim",
+    "incomplete": "Missing documents",
+}
+
+st.markdown(
+    '<div class="ciq-or">No documents to hand? Audit a worked example</div>',
+    unsafe_allow_html=True,
+)
+cols = st.columns(len(samples))
+for col, sample_name in zip(cols, samples, strict=True):
+    label = SAMPLE_LABEL.get(sample_name, sample_name.replace("_", " ").title())
+    if col.button(label, use_container_width=True, key=f"s_{sample_name}"):
+        packet = api_get(f"/api/samples/{sample_name}")
         with st.status("Auditing…", expanded=False) as status:
             st.session_state.packet = packet
             st.session_state.result = api_post("/api/audit", packet)
