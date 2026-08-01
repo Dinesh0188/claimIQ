@@ -18,11 +18,13 @@ so generated SQL keeps rupee semantics and answers come back as 24300 rather tha
 from __future__ import annotations
 
 import sqlite3
-from decimal import ROUND_HALF_UP, Decimal
+from datetime import date
+from decimal import Decimal
 
 import pandas as pd
 
 from claimiq.config import ROOT
+from claimiq.money import from_paise, to_paise
 from claimiq.state import AuditResult
 
 DB_PATH = ROOT / "data" / "claimiq.db"
@@ -30,7 +32,9 @@ DB_PATH = ROOT / "data" / "claimiq.db"
 # Bumped when the schema changes shape. A stale database is dropped and rebuilt rather
 # than migrated: every row is reproducible from data/generated/portfolio via seed_db.py,
 # so a migration path would be ceremony for data that is regenerated in 30 seconds.
-SCHEMA_VERSION = 2
+# 3: rupee views stopped dividing by 100.0 (REAL) and now expose the integer paise
+#    columns alongside, so readers can reassemble exact Decimals.
+SCHEMA_VERSION = 3
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS claims (
@@ -83,20 +87,29 @@ CREATE INDEX IF NOT EXISTS idx_claims_month            ON claims(month);
 CREATE INDEX IF NOT EXISTS idx_doc_gaps_severity       ON doc_gaps(severity);
 
 -- Rupee views. Storage stays exact; readers get natural units.
+--
+-- These used to divide by 100.0, which is REAL division in SQLite -- so the module
+-- that exists to keep money out of floating point handed out floats through its only
+-- read path, and every dashboard and text-to-SQL figure inherited them. Integer
+-- division by 100 keeps the whole-rupee column exact; `paise` carries the remainder,
+-- and `rupees_df()` reassembles both into Decimal before anything arithmetic happens.
 CREATE VIEW IF NOT EXISTS v_claims AS
 SELECT claim_id, audited_at, month, diagnosis, procedure,
-       gross_bill_paise          / 100.0 AS gross_bill,
-       settlement_paise          / 100.0 AS settlement,
-       patient_liability_paise   / 100.0 AS patient_liability,
-       hospital_writeoff_paise   / 100.0 AS hospital_writeoff,
-       room_rent_deduction_paise / 100.0 AS room_rent_deduction,
+       gross_bill_paise          / 100 AS gross_bill,
+       settlement_paise          / 100 AS settlement,
+       patient_liability_paise   / 100 AS patient_liability,
+       hospital_writeoff_paise   / 100 AS hospital_writeoff,
+       room_rent_deduction_paise / 100 AS room_rent_deduction,
+       gross_bill_paise, settlement_paise, patient_liability_paise,
+       hospital_writeoff_paise, room_rent_deduction_paise,
        unmapped_count, doc_gap_count, corpus_version, ai_pipeline
 FROM claims;
 
 CREATE VIEW IF NOT EXISTS v_findings AS
 SELECT claim_id, line_no, description, head, classification, bearer,
-       amount_paise   / 100.0 AS amount,
-       deducted_paise / 100.0 AS deducted,
+       amount_paise   / 100 AS amount,
+       deducted_paise / 100 AS deducted,
+       amount_paise, deducted_paise,
        cited_chunk_id
 FROM findings;
 """
@@ -127,12 +140,8 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
-def _paise(value: Decimal | float | None) -> int:
-    """Rupees to exact integer paise. Half-up, matching the waterfall's rounding."""
-    if value is None:
-        return 0
-    amount = value if isinstance(value, Decimal) else Decimal(str(value))
-    return int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+# Was a second, separate implementation of the same rounding. Now one function.
+_paise = to_paise
 
 
 def save_audit(result: AuditResult, ai_pipeline: bool = False, month: str | None = None) -> None:
@@ -157,7 +166,10 @@ def save_audit(result: AuditResult, ai_pipeline: bool = False, month: str | None
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 result.claim_id,
-                month or "2026-07",
+                # Callers pass the claim's own discharge month. The fallback used to be
+                # a hardcoded "2026-07", which filed every audit run from the UI into
+                # the same bucket and skewed the leakage dashboard's trend line.
+                month or date.today().strftime("%Y-%m"),
                 result.diagnosis,
                 result.procedure,
                 _paise(result.gross_bill),
@@ -196,14 +208,39 @@ def save_audit(result: AuditResult, ai_pipeline: bool = False, month: str | None
         )
 
 
+MONEY_COLUMNS = {
+    "gross_bill",
+    "settlement",
+    "patient_liability",
+    "hospital_writeoff",
+    "room_rent_deduction",
+    "amount",
+    "deducted",
+}
+
+
+def _exact_money(frame: pd.DataFrame) -> pd.DataFrame:
+    """Rebuild every money column as Decimal from its integer-paise source.
+
+    The view's rupee columns are integer-divided and therefore truncated -- fine for a
+    human skimming SQL, wrong for arithmetic. Anything that adds these numbers up gets
+    them exact, which is the entire reason they are stored as paise.
+    """
+    for column in MONEY_COLUMNS & set(frame.columns):
+        source = f"{column}_paise"
+        if source in frame.columns:
+            frame[column] = frame[source].map(from_paise)
+    return frame
+
+
 def claims_df() -> pd.DataFrame:
     with connect() as conn:
-        return pd.read_sql_query("SELECT * FROM v_claims", conn)
+        return _exact_money(pd.read_sql_query("SELECT * FROM v_claims", conn))
 
 
 def findings_df() -> pd.DataFrame:
     with connect() as conn:
-        return pd.read_sql_query("SELECT * FROM v_findings", conn)
+        return _exact_money(pd.read_sql_query("SELECT * FROM v_findings", conn))
 
 
 def doc_gaps_df() -> pd.DataFrame:

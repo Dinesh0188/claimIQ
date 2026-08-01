@@ -3,6 +3,16 @@
 > UNVERIFIED SNAPSHOT. Compiled from publicly circulated non-payable item lists.
 > Not checked against any current IRDAI circular. Treat as a dated approximation.
 
+<!-- source:
+jurisdiction: IN
+list: LIST_III_PROCEDURE
+bearer: HOSPITAL
+severity: WARNING
+source_id: IRDA-2016-146
+citation: Annexure III — costs subsumed into procedure charges
+citation_precision: list
+-->
+
 Theatre and procedure consumables that are deemed included in the surgical or procedure
 package rate. Billing them separately gets them deducted and the hospital absorbs the loss.
 

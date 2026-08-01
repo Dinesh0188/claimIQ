@@ -3,19 +3,19 @@
   "nodes": [
     {
       "node": "classify",
-      "started_at": "2026-07-26T10:08:14.881923+00:00",
-      "latency_ms": 179,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "llm_calls": 2,
-      "cache_hits": 2,
+      "started_at": "2026-08-01T09:59:19.810470+00:00",
+      "latency_ms": 27192,
+      "prompt_tokens": 2455,
+      "completion_tokens": 469,
+      "llm_calls": 1,
+      "cache_hits": 0,
       "attempts": 1,
       "note": "",
       "error": ""
     },
     {
       "node": "compute",
-      "started_at": "2026-07-26T10:08:15.065848+00:00",
+      "started_at": "2026-08-01T09:59:46.994236+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
@@ -27,7 +27,7 @@
     },
     {
       "node": "readiness",
-      "started_at": "2026-07-26T10:08:15.065848+00:00",
+      "started_at": "2026-08-01T09:59:46.994236+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
@@ -39,10 +39,10 @@
     },
     {
       "node": "explain",
-      "started_at": "2026-07-26T10:08:15.067854+00:00",
-      "latency_ms": 6894,
-      "prompt_tokens": 1609,
-      "completion_tokens": 1006,
+      "started_at": "2026-08-01T09:59:47.010309+00:00",
+      "latency_ms": 2821,
+      "prompt_tokens": 1544,
+      "completion_tokens": 1063,
       "llm_calls": 1,
       "cache_hits": 0,
       "attempts": 1,
@@ -51,7 +51,7 @@
     },
     {
       "node": "verify",
-      "started_at": "2026-07-26T10:08:21.963139+00:00",
+      "started_at": "2026-08-01T09:59:49.833910+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
@@ -63,7 +63,7 @@
     },
     {
       "node": "report",
-      "started_at": "2026-07-26T10:08:21.963139+00:00",
+      "started_at": "2026-08-01T09:59:49.835929+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,

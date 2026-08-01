@@ -27,7 +27,7 @@ def main(query: str) -> None:
                     f" dense#{hit.dense_rank if hit.dense_rank is not None else '-'}"
             print(
                 f"  {rank}. {hit.chunk.chunk_id:<10} {hit.chunk.title[:46]:<46} "
-                f"[{hit.chunk.list_name or hit.chunk.meta.get('topic', '-')}]  {ranks}"
+                f"[{hit.chunk.list_name or hit.chunk.topic or '-'}]  {ranks}"
             )
         print()
 

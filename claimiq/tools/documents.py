@@ -12,7 +12,7 @@ from collections.abc import Callable
 from decimal import Decimal
 from typing import NamedTuple
 
-from claimiq.state import ClaimPacket, DocumentGap, Severity
+from claimiq.state import SEVERITY_ORDER, ClaimPacket, DocumentGap, Severity
 
 
 class Requirement(NamedTuple):
@@ -70,28 +70,28 @@ REQUIREMENTS: list[Requirement] = [
     Requirement(
         "DOC-INDOOR-PAPERS",
         "Indoor case papers",
-        "QUERY_LIKELY",
+        "WARNING",
         "High-value and reimbursement claims are routinely queried for indoor case papers.",
         lambda p: p.gross_bill > Decimal("100000") or p.context.claim_type == "reimbursement",
     ),
     Requirement(
         "DOC-INVESTIGATION-REPORTS",
         "Investigation reports matching billed diagnostics",
-        "QUERY_LIKELY",
+        "WARNING",
         "Investigations billed without corresponding reports are held pending query.",
         lambda p: any(li.head == "INVESTIGATION" for li in p.line_items),
     ),
     Requirement(
         "DOC-OT-NOTES",
         "Operation theatre notes",
-        "QUERY_LIKELY",
+        "WARNING",
         "Surgical claims require OT notes to substantiate the procedure billed.",
         lambda p: any(li.head == "PROCEDURE" for li in p.line_items),
     ),
     Requirement(
         "DOC-PHARMACY-BILLS",
         "Pharmacy bills with prescriptions",
-        "QUERY_LIKELY",
+        "WARNING",
         "Pharmacy charges are disallowed where no matching prescription is on file.",
         lambda p: any(li.head == "PHARMACY" for li in p.line_items),
     ),
@@ -109,7 +109,7 @@ REQUIREMENTS: list[Requirement] = [
     Requirement(
         "DOC-ID-PROOF",
         "Photo identity proof of the insured",
-        "ADVISORY",
+        "INFO",
         "Standard KYC attachment; its absence delays rather than blocks.",
         lambda p: True,
     ),
@@ -118,16 +118,19 @@ REQUIREMENTS: list[Requirement] = [
 
 def check_documents(packet: ClaimPacket) -> list[DocumentGap]:
     attached = {d.strip().upper() for d in packet.context.documents_attached}
-    order = {"BLOCKER": 0, "QUERY_LIKELY": 1, "ADVISORY": 2}
 
     gaps = [
         DocumentGap(
             document_id=req.document_id,
+            rule_id=req.document_id,
             name=req.name,
             severity=req.severity,
             reason=req.reason,
+            field="context.documents_attached",
+            observed="not attached",
+            expected=req.name,
         )
         for req in REQUIREMENTS
         if req.applies(packet) and req.document_id.upper() not in attached
     ]
-    return sorted(gaps, key=lambda g: order[g.severity])
+    return sorted(gaps, key=lambda g: SEVERITY_ORDER[g.severity])

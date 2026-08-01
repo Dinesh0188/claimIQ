@@ -13,6 +13,7 @@ The backward edge is why this is a graph and not a chain.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from functools import lru_cache
 
 from langgraph.graph import END, StateGraph
@@ -25,8 +26,14 @@ from claimiq.nodes.explain import explain_node
 from claimiq.nodes.readiness import readiness_node
 from claimiq.nodes.report import report_node
 from claimiq.nodes.verify import needs_repair, verify_node
-from claimiq.retrieval.corpus import corpus_version
+from claimiq.retrieval.corpus import corpus_version, sources, stale_sources
 from claimiq.state import AuditResult, ClaimPacket, ClaimState
+
+# Below this share of the bill actually assessed, the result is not presented as a
+# finished audit. 0.9 rather than something stricter because the deterministic path
+# legitimately leaves payable lines unmatched; what this catches is a bill that was
+# largely unreadable or largely unrecognisable.
+MIN_COVERAGE = Decimal("0.9")
 
 NODES = {
     "classify": classify_node,
@@ -67,11 +74,79 @@ def graph():
     return builder.compile()
 
 
+def _assessment(state: ClaimState) -> tuple[Decimal, list[str], list[str]]:
+    """How much of this bill was assessed, and everything that qualifies the answer.
+
+    Two lists, and keeping them apart is the point.
+
+    `caveats` are facts about THIS claim that make THIS result unreliable -- most of
+    the bill was unreadable, rows were misread, the verifier disagreed with itself.
+    They drive the CANNOT_VERIFY verdict, because a partial check has not established
+    that the parts it skipped were fine.
+
+    `disclosures` are standing facts about the product: the offline classifier's
+    measured recall, and rule sources nobody has re-checked. They are always true, so
+    routing them into the verdict would make every audit CANNOT_VERIFY, and a verdict
+    that never changes is one users stop reading. They belong on a persistent banner
+    instead -- true, visible, and not pretending to be news about this claim.
+    """
+    gross = state.packet.gross_bill
+
+    # Coverage is measured in rupees, not lines, and both ways of failing to stand
+    # behind a line count against it: one we could not identify, and one we may have
+    # misread. Counting them separately produced two competing signals where a
+    # handful of low-confidence rows on any OCR'd bill flipped the verdict -- which is
+    # how a warning becomes wallpaper. One number, weighted by what it is worth.
+    unmapped_lines = [f for f in state.findings if f.classification == "UNMAPPED"]
+    unmapped_nos = {f.line_no for f in unmapped_lines}
+    # `extract_confidence` on the line item, NOT `confidence` on the finding. The
+    # first is how well the row was READ; the second is how strongly it matched a rule,
+    # and for a payable line that is the retrieval cosine -- legitimately low, and
+    # nothing to do with data quality. Reading the wrong one marked every clean bill
+    # unassessable.
+    unsure_lines = [
+        li
+        for li in state.packet.line_items
+        if li.extract_confidence < 0.7 and li.line_no not in unmapped_nos
+    ]
+    unassessed = sum(
+        (f.amount for f in unmapped_lines), Decimal("0")
+    ) + sum((li.amount for li in unsure_lines), Decimal("0"))
+    coverage = ((gross - unassessed) / gross) if gross > 0 else Decimal("1")
+
+    caveats: list[str] = []
+    if coverage < MIN_COVERAGE:
+        reasons = []
+        if unmapped_lines:
+            reasons.append(f"{len(unmapped_lines)} line(s) matched no rule")
+        if unsure_lines:
+            reasons.append(f"{len(unsure_lines)} line(s) were read with low confidence")
+        caveats.append(
+            f"Only {coverage:.0%} of this bill could be assessed — "
+            f"{' and '.join(reasons)}, worth Rs {unassessed:,}. Unassessed charges are "
+            f"counted as payable, so the settlement figure is an upper bound."
+        )
+
+    disclosures: list[str] = []
+    if not state.ai_used:
+        disclosures.append(
+            "Checked with deterministic rules only. On the labelled benchmark that path "
+            "finds 74.6% of non-payable items, so roughly one in four is missed — a line "
+            "shown as payable here has not been cleared, only unmatched."
+        )
+    for source_id, reason in stale_sources().items():
+        disclosures.append(f"Rule source '{sources()[source_id].title}' — {reason}")
+
+    return coverage, caveats, disclosures
+
+
 def audit(packet: ClaimPacket, persist: bool = True) -> AuditResult:
     run = trace.start_run(packet.claim_id)
     raw = graph().invoke(ClaimState(packet=packet))
     state = raw if isinstance(raw, ClaimState) else ClaimState.model_validate(raw)
     run.save()
+
+    coverage, caveats, disclosures = _assessment(state)
 
     result = AuditResult(
         claim_id=packet.claim_id,
@@ -92,12 +167,20 @@ def audit(packet: ClaimPacket, persist: bool = True) -> AuditResult:
         verify_passed=state.verify_passed,
         verify_problems=state.verify_problems,
         repair_count=state.repair_count,
+        coverage=coverage,
+        caveats=caveats,
+        disclosures=disclosures,
+        strategy="llm" if state.ai_used else "deterministic",
     )
 
     if persist:
         from claimiq.store import save_audit
 
-        save_audit(result, ai_pipeline=state.ai_used)
+        save_audit(
+            result,
+            ai_pipeline=state.ai_used,
+            month=packet.context.discharge_date.strftime("%Y-%m"),
+        )
 
     return result
 

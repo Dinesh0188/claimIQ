@@ -6,6 +6,7 @@ inconsistent explanation rather than hoping a real model produces one.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -110,7 +111,7 @@ def test_numbers_quoted_from_our_own_flags_are_grounded(state: ClaimState) -> No
     state.consistency_flags = [
         ConsistencyFlag(
             check_id="CHK-ROUND-NUMBER",
-            severity="ADVISORY",
+            severity="INFO",
             message="91% of line items above Rs 1,000 are exact multiples of 1,000.",
         )
     ]
@@ -135,10 +136,42 @@ def test_preauth_variance_is_grounded(state: ClaimState) -> None:
     assert verify_node(state)["verify_passed"] is True, verify_node(state)["verify_problems"]
 
 
-def test_keyword_deduction_does_not_need_a_citation(state: ClaimState) -> None:
+def test_no_deduction_may_be_uncited_whatever_produced_it(state: ClaimState) -> None:
+    """Replaces test_keyword_deduction_does_not_need_a_citation, which asserted the
+    opposite.
+
+    The old rule exempted keyword matches from citation enforcement, reasoning that a
+    hand-written table is auditable code and has no chunk to point at. The exemption
+    turned out to be load-bearing in the wrong direction: keyword ran first in the
+    deterministic path, so the one strategy that could not cite was the one deciding
+    most deductions, and it shadowed the corpus rule that would have justified them.
+
+    The matcher is now built from corpus aliases and every match carries a chunk, so
+    the exemption has no remaining justification and money may not move without one.
+    """
     state.narrative = ""
     for finding in state.findings:
         finding.source = "keyword"
+        finding.cited_chunk_id = None
+
+    result = verify_node(state)
+
+    deductions = [f for f in state.findings if f.classification.startswith("LIST_")]
+    assert deductions, "cardiac sample produces deductions"
+    assert result["verify_passed"] is False
+    assert any("cite no catalog entry" in p for p in result["verify_problems"])
+
+
+def test_a_clean_claim_still_passes_with_no_citations(state: ClaimState) -> None:
+    """The rule is 'no uncited *deduction*', not 'every line must cite something'.
+
+    A payable line has no rule to point at, and demanding one would make every clean
+    claim fail verification -- which is how a guardrail gets switched off.
+    """
+    state.narrative = ""
+    for finding in state.findings:
+        finding.classification = "PAYABLE"
+        finding.deducted_amount = Decimal("0")
         finding.cited_chunk_id = None
 
     assert verify_node(state)["verify_passed"] is True

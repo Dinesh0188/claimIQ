@@ -11,8 +11,9 @@ Invariant, enforced by construction and asserted in tests:
 
 from __future__ import annotations
 
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
+from claimiq.money import quantize as _money
 from claimiq.state import (
     ClaimPacket,
     Head,
@@ -20,13 +21,6 @@ from claimiq.state import (
     PolicyDeduction,
     WaterfallResult,
 )
-
-PAISE = Decimal("0.01")
-
-
-def _money(value: Decimal) -> Decimal:
-    return value.quantize(PAISE, rounding=ROUND_HALF_UP)
-
 
 # Which billing heads are NOT dragged into the proportionate deduction.
 #
@@ -85,13 +79,39 @@ def compute_waterfall(
     running = gross - item_deduction_total
     deductions: list[PolicyDeduction] = []
 
-    def apply(step: str, basis: str, amount: Decimal) -> None:
-        """Record a deduction, never letting the claim go negative."""
+    def apply(
+        step: str,
+        basis: str,
+        amount: Decimal,
+        inputs: dict[str, str] | None = None,
+        formula: str = "",
+    ) -> None:
+        """Record a deduction, never letting the claim go negative.
+
+        `inputs` and `formula` are what let the screen show the arithmetic rather than
+        a bare bar on a chart. They record the figure the rule *computed*; `amount` is
+        what was actually taken after the clamp below, and the two differ whenever a
+        deduction would have overrun the remaining claim. Showing only the second is
+        how a user ends up unable to reproduce our number with a calculator.
+        """
         nonlocal running
-        taken = _money(min(max(amount, Decimal("0")), running))
-        if taken > 0:
-            deductions.append(PolicyDeduction(step=step, basis=basis, amount=taken))
-            running -= taken
+        wanted = _money(max(amount, Decimal("0")))
+        taken = _money(min(wanted, running))
+        if taken <= 0:
+            return
+
+        detail = dict(inputs or {})
+        if taken != wanted:
+            detail["clamped"] = (
+                f"computed {_money(wanted):,} but only {_money(running):,} of the claim "
+                f"remained at this step"
+            )
+        deductions.append(
+            PolicyDeduction(
+                step=step, basis=basis, amount=taken, inputs=detail, formula=formula
+            )
+        )
+        running -= taken
 
     by_head = _payable_by_head(findings)
 
@@ -105,6 +125,16 @@ def compute_waterfall(
             f"Room billed at Rs {room.rate_per_day:,}/day against a cap of Rs {cap:,}/day "
             f"for {room.days} days.",
             excess,
+            inputs={
+                "room rate billed": f"Rs {room.rate_per_day:,}/day",
+                "policy cap": f"Rs {cap:,}/day ({'ICU' if room.is_icu else 'room'} limit)",
+                "days": str(room.days),
+                "room charges still on the claim": f"Rs {_money(room_payable):,}",
+            },
+            formula=(
+                f"min(({room.rate_per_day:,} - {cap:,}) x {room.days}, "
+                f"{_money(room_payable):,}) = {_money(excess):,}"
+            ),
         )
 
         # Associated charges get scaled by the same ratio the room exceeded its cap.
@@ -118,6 +148,20 @@ def compute_waterfall(
             f"Associated charges of Rs {_money(associated):,} scaled by "
             f"(1 - {cap:,}/{room.rate_per_day:,}) under the '{profile}' profile.",
             associated * (Decimal("1") - ratio),
+            inputs={
+                "associated charges": f"Rs {_money(associated):,}",
+                "heads included": ", ".join(
+                    sorted(h for h in by_head if h not in excluded)
+                )
+                or "none",
+                "heads excluded by the "
+                f"'{profile}' profile": ", ".join(sorted(excluded)),
+                "eligible proportion": f"{cap:,} / {room.rate_per_day:,} = {ratio:.4f}",
+            },
+            formula=(
+                f"{_money(associated):,} x (1 - {ratio:.4f}) = "
+                f"{_money(associated * (Decimal('1') - ratio)):,}"
+            ),
         )
 
     # --- step 3: procedure sub-limit ------------------------------------
@@ -128,19 +172,43 @@ def compute_waterfall(
                 "procedure_sublimit",
                 f"Policy caps '{name}' at Rs {limit:,}.",
                 running - limit,
+                inputs={
+                    "procedure": packet.context.procedure_performed or "",
+                    "sub-limit": f"Rs {limit:,}",
+                    "claim at this step": f"Rs {_money(running):,}",
+                },
+                formula=f"{_money(running):,} - {limit:,} = {_money(running - limit):,}",
             )
             break
 
     # --- step 4: deductible ---------------------------------------------
     if policy.deductible > 0:
-        apply("deductible", f"Policy deductible of Rs {policy.deductible:,}.", policy.deductible)
+        apply(
+            "deductible",
+            f"Policy deductible of Rs {policy.deductible:,}.",
+            policy.deductible,
+            inputs={"policy deductible": f"Rs {policy.deductible:,}"},
+            formula=f"flat {_money(policy.deductible):,}",
+        )
 
     # --- step 5: co-pay --------------------------------------------------
     if policy.copay_percent > 0:
+        # The admissible amount is named explicitly. The basis line used to say
+        # "10% co-pay on the admissible amount" without ever stating what the
+        # admissible amount was, which made the rupee figure impossible to check.
+        admissible = _money(running)
         apply(
             "copay",
-            f"{policy.copay_percent}% co-pay on the admissible amount.",
+            f"{policy.copay_percent}% co-pay on an admissible amount of Rs {admissible:,}.",
             running * policy.copay_percent / Decimal("100"),
+            inputs={
+                "admissible amount at this step": f"Rs {admissible:,}",
+                "co-pay rate": f"{policy.copay_percent}%",
+            },
+            formula=(
+                f"{admissible:,} x {policy.copay_percent}% = "
+                f"{_money(running * policy.copay_percent / Decimal('100')):,}"
+            ),
         )
 
     # --- step 6: balance sum insured ------------------------------------
@@ -149,6 +217,14 @@ def compute_waterfall(
             "sum_insured_cap",
             f"Balance sum insured is Rs {policy.balance_sum_insured:,}.",
             running - policy.balance_sum_insured,
+            inputs={
+                "claim at this step": f"Rs {_money(running):,}",
+                "balance sum insured": f"Rs {policy.balance_sum_insured:,}",
+            },
+            formula=(
+                f"{_money(running):,} - {policy.balance_sum_insured:,} = "
+                f"{_money(running - policy.balance_sum_insured):,}"
+            ),
         )
 
     policy_total = sum((d.amount for d in deductions), Decimal("0"))

@@ -107,17 +107,23 @@ def verify_node(state: ClaimState) -> dict:
                 f"{waterfall.gross_bill}."
             )
 
-    # 2. citations -- enforced on model output only. A keyword-table match has no
-    #    chunk to cite and does not need one; the table is auditable source code.
+    # 2. citations -- enforced on EVERY deduction, whichever strategy produced it.
+    #
+    #    This used to exempt the keyword path, on the argument that a hand-written
+    #    table is auditable source code and has no chunk to point at. Both halves are
+    #    now false: the matcher is built from corpus aliases, so every match has a
+    #    chunk, and the exemption was doing real harm -- keyword ran first, so the one
+    #    strategy that could not cite was the one that decided most deductions.
     uncited = [
         f.line_no
         for f in state.findings
-        if f.source == "llm" and f.classification.startswith("LIST_") and not f.cited_chunk_id
+        if f.classification.startswith("LIST_") and not f.cited_chunk_id
     ]
     if uncited:
         problems.append(
-            f"{len(uncited)} model-produced deduction(s) cite no catalog entry (lines "
-            f"{', '.join(map(str, uncited[:10]))})."
+            f"{len(uncited)} deduction(s) cite no catalog entry (lines "
+            f"{', '.join(map(str, uncited[:10]))}). Money may not be moved by a rule "
+            f"that cannot be pointed at."
         )
 
     # 3. narrative reconciliation

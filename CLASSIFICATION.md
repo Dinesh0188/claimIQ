@@ -1,14 +1,13 @@
 # Classification benchmark
 
-Corpus `unverified-f7022b21dc` — 87 hand-labelled line items written to imitate real hospital bill printing.
+Corpus `unverified-97f8583129` — 87 hand-labelled line items written to imitate real hospital bill printing.
 
 | strategy | accuracy | non-payable recall | false deduction rate | citation rate |
 |---|---|---|---|---|
 | head_only | 51.7% | 30.5% | 3.6% | 0% |
-| keyword | 73.6% | 61.0% | 0.0% | 0% |
+| keyword | 82.8% | 74.6% | 0.0% | 100% |
 | retrieval | 40.2% | 11.9% | 0.0% | 100% |
-| deterministic | 74.7% | 62.7% | 0.0% | 3% |
-| llm | 96.6% | 96.6% | 3.6% | 100% |
+| deterministic | 81.6% | 74.6% | 0.0% | 100% |
 
 ### Read `accuracy` against the `head_only` control
 
@@ -20,4 +19,4 @@ Corpus `unverified-f7022b21dc` — 87 hand-labelled line items written to imitat
 
 `retrieval` uses hybrid search with a cosine confidence gate and no LLM — this is what runs when `AI_ENABLED=false`. `llm` hands the retrieved candidates to the model, which must cite the catalog entry it decided from; uncited non-payable verdicts are rejected and downgraded to UNMAPPED.
 
-Best strategy on this set: **llm** at 96.6% accuracy.
+Best strategy on this set: **keyword** at 82.8% accuracy.

@@ -3,11 +3,11 @@
   "nodes": [
     {
       "node": "classify",
-      "started_at": "2026-07-26T07:26:33.374383+00:00",
-      "latency_ms": 61158,
-      "prompt_tokens": 6341,
-      "completion_tokens": 2097,
-      "llm_calls": 2,
+      "started_at": "2026-08-01T08:28:32.314096+00:00",
+      "latency_ms": 74025,
+      "prompt_tokens": 7151,
+      "completion_tokens": 2240,
+      "llm_calls": 3,
       "cache_hits": 0,
       "attempts": 1,
       "note": "",
@@ -15,7 +15,7 @@
     },
     {
       "node": "compute",
-      "started_at": "2026-07-26T07:27:34.537110+00:00",
+      "started_at": "2026-08-01T08:29:46.346434+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
@@ -27,7 +27,7 @@
     },
     {
       "node": "readiness",
-      "started_at": "2026-07-26T07:27:34.539642+00:00",
+      "started_at": "2026-08-01T08:29:46.346434+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
@@ -39,10 +39,10 @@
     },
     {
       "node": "explain",
-      "started_at": "2026-07-26T07:27:34.539642+00:00",
-      "latency_ms": 19485,
-      "prompt_tokens": 1474,
-      "completion_tokens": 1046,
+      "started_at": "2026-08-01T08:29:46.346434+00:00",
+      "latency_ms": 13813,
+      "prompt_tokens": 2012,
+      "completion_tokens": 970,
       "llm_calls": 1,
       "cache_hits": 0,
       "attempts": 1,
@@ -51,7 +51,7 @@
     },
     {
       "node": "verify",
-      "started_at": "2026-07-26T07:27:54.028428+00:00",
+      "started_at": "2026-08-01T08:30:00.160669+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
@@ -63,7 +63,7 @@
     },
     {
       "node": "report",
-      "started_at": "2026-07-26T07:27:54.028428+00:00",
+      "started_at": "2026-08-01T08:30:00.160669+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,

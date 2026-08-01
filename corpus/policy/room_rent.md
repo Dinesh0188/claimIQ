@@ -4,6 +4,24 @@
 > reasoning path. It is representative of common Indian indemnity health policies but
 > is not any real insurer's contract.
 
+<!-- source:
+jurisdiction: IN
+topic: policy_wording
+severity: INFO
+source_id: SYNTHETIC-POLICY
+citation: Illustrative wording — not a real policy contract
+citation_precision: list
+-->
+
+<!--
+severity INFO: these chunks describe how a deduction is computed. They are not a defect
+anybody has to fix, so they must never be ranked alongside a blocker.
+
+source_id SYNTHETIC-POLICY is load-bearing, not bookkeeping. It is what makes the
+product say "illustrative wording" wherever one of these is cited, instead of quietly
+presenting invented contract language as if it were regulation.
+-->
+
 <!-- chunk_id: POL-ROOM-001 | topic: room_rent_cap -->
 ### Room rent eligibility
 The Company shall be liable for room, boarding and nursing expenses up to the Room Rent

@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections import Counter
 from decimal import Decimal
 
-from claimiq.state import ClaimPacket, ConsistencyFlag, ItemFinding
+from claimiq.state import SEVERITY_ORDER, ClaimPacket, ConsistencyFlag, ItemFinding
 
 Check = tuple[str, str]
 
@@ -24,7 +24,12 @@ def check_room_days_vs_los(packet: ClaimPacket, findings: list[ItemFinding]) -> 
     if packet.room_stay.days > los:
         return ConsistencyFlag(
             check_id="CHK-LOS-ROOM",
+            rule_id="CHK-LOS-ROOM",
             severity="BLOCKER",
+            field="room_stay.days",
+            observed=f"{packet.room_stay.days} days billed",
+            expected=f"at most {los} days (admission to discharge)",
+            impact=packet.room_stay.rate_per_day * (packet.room_stay.days - los),
             message=(
                 f"Room billed for {packet.room_stay.days} days but admission to discharge "
                 f"spans {los} days. The excess will be disallowed and is a common cause of "
@@ -42,7 +47,13 @@ def check_room_total(packet: ClaimPacket, findings: list[ItemFinding]) -> Consis
     if billed and abs(billed - expected) > Decimal("1"):
         return ConsistencyFlag(
             check_id="CHK-ROOM-TOTAL",
-            severity="QUERY_LIKELY",
+            rule_id="CHK-ROOM-TOTAL",
+            severity="WARNING",
+            field="line_items[head=ROOM].amount",
+            observed=f"Rs {billed:,} billed",
+            expected=f"Rs {expected:,} "
+            f"({packet.room_stay.rate_per_day:,} x {packet.room_stay.days} days)",
+            impact=abs(billed - expected),
             message=(
                 f"Room line items total Rs {billed:,} but the declared tariff implies "
                 f"Rs {expected:,} ({packet.room_stay.rate_per_day:,} x {packet.room_stay.days}). "
@@ -62,7 +73,15 @@ def check_service_dates(packet: ClaimPacket, findings: list[ItemFinding]) -> Con
     if outside:
         return ConsistencyFlag(
             check_id="CHK-DATE-WINDOW",
-            severity="QUERY_LIKELY",
+            rule_id="CHK-DATE-WINDOW",
+            severity="WARNING",
+            field="line_items.service_date",
+            observed=f"{len(outside)} line(s) dated outside the stay",
+            expected=f"{packet.context.admission_date} to {packet.context.discharge_date}",
+            impact=sum(
+                (li.amount for li in packet.line_items if li.line_no in set(outside)),
+                Decimal("0"),
+            ),
             message=(
                 f"{len(outside)} line item(s) are dated outside the admission window "
                 f"(lines {', '.join(map(str, outside[:8]))}). Pharmacy dated after discharge "
@@ -81,7 +100,12 @@ def check_preauth_variance(packet: ClaimPacket, findings: list[ItemFinding]) -> 
         variance = (gross - approved) / approved * 100
         return ConsistencyFlag(
             check_id="CHK-PREAUTH-VARIANCE",
+            rule_id="CHK-PREAUTH-VARIANCE",
             severity="BLOCKER",
+            field="gross_bill vs context.preauth_approved_amount",
+            observed=f"Rs {gross:,} billed",
+            expected=f"Rs {approved:,} pre-authorised (10% tolerance)",
+            impact=gross - approved,
             message=(
                 f"Final bill Rs {gross:,} exceeds the pre-authorised Rs {approved:,} by "
                 f"{variance:.0f}%. File an enhancement request before submitting, or expect "
@@ -100,7 +124,15 @@ def check_duplicates(packet: ClaimPacket, findings: list[ItemFinding]) -> Consis
         names = ", ".join(sorted({d[0] for d in dupes})[:5])
         return ConsistencyFlag(
             check_id="CHK-DUPLICATE-LINE",
-            severity="QUERY_LIKELY",
+            rule_id="CHK-DUPLICATE-LINE",
+            severity="WARNING",
+            field="line_items",
+            observed=f"{len(dupes)} description/amount/date combination(s) billed twice",
+            expected="each charge billed once",
+            impact=sum(
+                (amount * (count - 1) for (_, amount, _), count in seen.items() if count > 1),
+                Decimal("0"),
+            ),
             message=f"{len(dupes)} line item(s) appear more than once with identical amount and date: {names}.",
         )
     return None
@@ -114,7 +146,11 @@ def check_icu_declared_but_not_billed(
     if not any("icu" in li.description.lower() for li in packet.line_items):
         return ConsistencyFlag(
             check_id="CHK-ICU-NO-CHARGE",
-            severity="ADVISORY",
+            rule_id="CHK-ICU-NO-CHARGE",
+            severity="INFO",
+            field="room_stay.is_icu",
+            observed="declared ICU, no ICU line on the bill",
+            expected="an ICU charge, or the stay recorded as non-ICU",
             message="Stay is declared as ICU but no ICU line item appears on the bill.",
         )
     return None
@@ -128,7 +164,15 @@ def check_unmapped_share(packet: ClaimPacket, findings: list[ItemFinding]) -> Co
     if gross > 0 and unmapped / gross > Decimal("0.10"):
         return ConsistencyFlag(
             check_id="CHK-UNMAPPED-SHARE",
-            severity="ADVISORY",
+            rule_id="CHK-UNMAPPED-SHARE",
+            # Raised from INFO. This is the check that says "we could not assess a
+            # tenth of this bill" -- the one finding that undermines every number on
+            # the screen. Filing it alongside "your amounts look rounded" was wrong.
+            severity="WARNING",
+            field="line_items.classification",
+            observed=f"Rs {unmapped:,} unassessed ({unmapped / gross:.0%} of gross)",
+            expected="every line matched to a rule or confirmed payable",
+            impact=unmapped,
             message=(
                 f"Rs {unmapped:,} ({unmapped / gross:.0%} of the bill) could not be matched "
                 "to a catalog entry. The estimate below is correspondingly less reliable."
@@ -147,7 +191,11 @@ def check_round_numbers(packet: ClaimPacket, findings: list[ItemFinding]) -> Con
     if share > 0.7:
         return ConsistencyFlag(
             check_id="CHK-ROUND-NUMBER",
-            severity="ADVISORY",
+            rule_id="CHK-ROUND-NUMBER",
+            severity="INFO",
+            field="line_items.amount",
+            observed=f"{len(round_ones)} of {len(items)} items are exact multiples of 1,000",
+            expected="itemised amounts",
             message=(
                 f"{share:.0%} of line items above Rs 1,000 are exact multiples of 1,000. "
                 "Not evidence of anything on its own, but bills that look estimated rather "
@@ -162,7 +210,11 @@ def check_daycare_length(packet: ClaimPacket, findings: list[ItemFinding]) -> Co
     if los == 0 and packet.room_stay.days > 0:
         return ConsistencyFlag(
             check_id="CHK-DAYCARE-LOS",
-            severity="ADVISORY",
+            rule_id="CHK-DAYCARE-LOS",
+            severity="INFO",
+            field="context.admission_date / discharge_date",
+            observed="same-day admission and discharge, with room charges",
+            expected="an overnight stay, or a day-care filing",
             message=(
                 "Admission and discharge fall on the same day but room charges are billed. "
                 "Confirm whether this should be filed as a day-care procedure."
@@ -185,6 +237,5 @@ CHECKS = [
 
 
 def run_checks(packet: ClaimPacket, findings: list[ItemFinding]) -> list[ConsistencyFlag]:
-    order = {"BLOCKER": 0, "QUERY_LIKELY": 1, "ADVISORY": 2}
     flags = [flag for check in CHECKS if (flag := check(packet, findings)) is not None]
-    return sorted(flags, key=lambda f: order[f.severity])
+    return sorted(flags, key=lambda f: SEVERITY_ORDER[f.severity])

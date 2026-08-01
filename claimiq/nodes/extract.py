@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import base64
 import io
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from functools import lru_cache
 from pathlib import Path
 
@@ -28,7 +28,7 @@ from claimiq.llm import (
     LLMUnavailable,
     try_client,
 )
-from claimiq.state import BillLineItem, Head
+from claimiq.state import BillLineItem, Head, RoomStay
 
 MAX_PAGES = 20
 
@@ -223,6 +223,72 @@ def _row_to_item(row: list, line_no: int) -> BillLineItem | None:
     )
 
 
+# Room descriptions that mean the ICU cap applies instead of the room cap. Which of
+# the two caps is tested changes the settlement by lakhs, so it is worth reading off
+# the row rather than defaulting.
+ICU_TOKENS = ("icu", "intensive care", "critical care", "hdu", "high dependency", "itu")
+
+
+def _rate_per_day(item: BillLineItem) -> Decimal:
+    """Per-day rate for a room row, tolerating bills that print only the row total."""
+    if item.unit_rate > 0:
+        return item.unit_rate
+    if item.quantity > 0:
+        return item.amount / item.quantity
+    return item.amount
+
+
+def room_stay_from_items(items: list[BillLineItem]) -> RoomStay | None:
+    """Describe the stay from the bill's own ROOM rows. No model, no defaults.
+
+    The room stay drives the two largest numbers the waterfall produces -- the room
+    rent excess and the proportionate scaling of every associated charge -- so it has
+    to come from the uploaded bill and nowhere else. It used to be inherited from a
+    sample claim, which meant an uploaded bill was audited against a stay it never had.
+
+    Returns None when the bill has no room row. That is deliberate: the caller asks
+    the user rather than inventing a stay, because a fabricated rate produces a
+    confident and completely wrong deduction.
+    """
+    rooms = [i for i in items if i.head == "ROOM"]
+    if not rooms:
+        return None
+
+    # A stay that moved ward -> ICU bills two rows at different rates. Averaging them
+    # would understate the peak rate, and the peak rate is what the cap is tested
+    # against, so take the dearest row and let the user correct it on screen.
+    dearest = max(rooms, key=_rate_per_day)
+    rate = _rate_per_day(dearest)
+    days = sum((i.quantity for i in rooms), Decimal("0")).quantize(
+        Decimal("1"), rounding=ROUND_HALF_UP
+    )
+    if rate <= 0 or days < 1:
+        return None
+
+    description = dearest.description.strip() or "Room"
+    return RoomStay(
+        room_category=description,
+        rate_per_day=rate,
+        days=int(days),
+        is_icu=any(token in description.lower() for token in ICU_TOKENS),
+    )
+
+
+def _stamp_room(bill: ExtractedBill, items: list[BillLineItem]) -> ExtractedBill:
+    """Fill the extraction's room fields from the rows that were actually parsed.
+
+    Applied on every path. These fields used to be set only by the vision extractor,
+    which nothing reaches at runtime, so they arrived at the UI permanently null.
+    A value derived from the parsed rows also beats one the model summarised.
+    """
+    stay = room_stay_from_items(items)
+    if stay is not None:
+        bill.room_category = stay.room_category
+        bill.room_rate_per_day = str(stay.rate_per_day)
+        bill.room_days = stay.days
+    return bill
+
+
 def ocr_pages(path: Path, max_pages: int = MAX_PAGES) -> str:
     """Read a scanned PDF with local OCR. Free, offline, no vision model.
 
@@ -345,6 +411,58 @@ def extract_policy_terms(path: Path, client: LLMClient | None = None) -> Extract
             schema=ExtractedPolicy,
         )
     except Exception:  # noqa: BLE001 - a failed read falls back to the form defaults
+        return None
+
+
+CONTEXT_SYSTEM = """You read Indian hospital discharge summaries and extract the facts that
+determine how a claim is assessed.
+
+Return only what the document actually states. Leave a field null rather than guessing —
+a wrong admission date changes the length of stay, and the length of stay is checked
+against the number of room days on the bill.
+
+- Dates as ISO "YYYY-MM-DD". If the year is not printed anywhere, leave the date null.
+- `primary_diagnosis`: the final diagnosis as written, not the presenting complaint.
+- `procedure_performed`: the surgical procedure. Null for a purely medical admission.
+- `is_accident`, `is_maternity`, `involves_implant`: true only where the document says so."""
+
+
+class ExtractedContext(BaseModel):
+    admission_date: str | None = None
+    discharge_date: str | None = None
+    primary_diagnosis: str | None = None
+    procedure_performed: str | None = None
+    is_accident: bool = False
+    is_maternity: bool = False
+    involves_implant: bool = False
+
+
+def extract_clinical_context(path: Path, client: LLMClient | None = None) -> ExtractedContext | None:
+    """Read the admission facts out of an uploaded discharge summary.
+
+    Same bargain as `extract_policy_terms`: the summary states the dates, the diagnosis
+    and the procedure outright, so asking the user to retype them is busywork -- and the
+    alternative this replaces was worse than busywork. These fields used to be inherited
+    from a sample claim, so every uploaded bill was audited as a knee replacement.
+
+    Returns None with no key configured, which leaves the form blank rather than wrong.
+    """
+    client = client or try_client()
+    if client is None:
+        return None
+
+    text = document_text(path, max_pages=4)
+    if len(text) < 80:
+        return None
+
+    try:
+        return client.structured(
+            node="context",
+            system=CONTEXT_SYSTEM,
+            user=f"Discharge summary text:\n\n{text[:8000]}",
+            schema=ExtractedContext,
+        )
+    except Exception:  # noqa: BLE001 - a failed read leaves the user to fill the form
         return None
 
 
@@ -481,9 +599,12 @@ def extract_via_ocr(
     if not items:
         return None
 
-    return items, ExtractedBill(
-        method="ocr+llm" if len(chunks) == 1 else f"ocr+llm ({len(chunks)} parts)",
-        rows=rows,
+    return items, _stamp_room(
+        ExtractedBill(
+            method="ocr+llm" if len(chunks) == 1 else f"ocr+llm ({len(chunks)} parts)",
+            rows=rows,
+        ),
+        items,
     )
 
 
@@ -517,7 +638,7 @@ def extract_bill(
     if not force_vision and not is_image:
         items = extract_from_text_layer(path)
         if len(items) >= 3:
-            return items, ExtractedBill(method="text_layer")
+            return items, _stamp_room(ExtractedBill(method="text_layer"), items)
 
     client = client or try_client()
     if client is None:
@@ -599,4 +720,4 @@ def extract_bill(
             )
         )
 
-    return items, merged
+    return items, _stamp_room(merged, items)

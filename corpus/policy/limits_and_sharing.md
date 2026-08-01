@@ -2,6 +2,15 @@
 
 > SYNTHETIC POLICY WORDING. Representative, not any real insurer's contract.
 
+<!-- source:
+jurisdiction: IN
+topic: policy_wording
+severity: INFO
+source_id: SYNTHETIC-POLICY
+citation: Illustrative wording — not a real policy contract
+citation_precision: list
+-->
+
 <!-- chunk_id: POL-LIM-001 | topic: procedure_sublimit -->
 ### Procedure sub-limits
 Certain named procedures are payable only up to the monetary sub-limit stated against them

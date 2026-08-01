@@ -21,10 +21,26 @@ from reportlab.platypus import (
 from claimiq.state import AuditResult
 
 SEVERITY_COLOUR = {
-    "BLOCKER": colors.HexColor("#b3261e"),
-    "QUERY_LIKELY": colors.HexColor("#a06a00"),
-    "ADVISORY": colors.HexColor("#5a5a5a"),
+    "BLOCKER": "#b3261e",
+    "WARNING": "#a06a00",
+    "INFO": "#5a5a5a",
 }
+
+
+def _colour(severity: str) -> str:
+    """Hex colour for reportlab's inline `<font color=...>` markup.
+
+    These were `colors.HexColor(...)` objects rendered with `.hexval()[2:]`, which
+    strips reportlab's `0x` prefix and yields a bare `b3261e` -- no `#`. The installed
+    reportlab rejects that as an invalid colour and raises mid-build, so every claim
+    carrying a document gap or a consistency flag crashed the "Build audit report"
+    button. Almost every claim carries one. It went unnoticed because nothing in the
+    suite ever built a PDF; `tests/test_engine.py` now does.
+
+    Unknown severities fall back to grey rather than raising: a report that prints one
+    label in the wrong colour is better than no report at all.
+    """
+    return SEVERITY_COLOUR.get(severity, "#5a5a5a")
 
 
 def build_report(result: AuditResult, profile: str = "typical") -> bytes:
@@ -122,7 +138,7 @@ def build_report(result: AuditResult, profile: str = "typical") -> bytes:
         for gap in result.document_gaps:
             story.append(
                 Paragraph(
-                    f'<font color="{SEVERITY_COLOUR[gap.severity].hexval()[2:]}">'
+                    f'<font color="{_colour(gap.severity)}">'
                     f"<b>[{gap.severity}]</b></font> {gap.name} — {gap.reason}",
                     body,
                 )
@@ -133,7 +149,7 @@ def build_report(result: AuditResult, profile: str = "typical") -> bytes:
         for flag in result.consistency_flags:
             story.append(
                 Paragraph(
-                    f'<font color="{SEVERITY_COLOUR[flag.severity].hexval()[2:]}">'
+                    f'<font color="{_colour(flag.severity)}">'
                     f"<b>[{flag.severity}]</b></font> {flag.message}",
                     body,
                 )

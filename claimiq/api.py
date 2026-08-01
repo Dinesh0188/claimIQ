@@ -13,6 +13,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from openai import APIError
 
 from claimiq import analytics, providers, trace
@@ -24,7 +25,9 @@ from claimiq.nodes.extract import (
     detect_document_type,
     document_text,
     extract_bill,
+    extract_clinical_context,
     extract_policy_terms,
+    room_stay_from_items,
 )
 from claimiq.report import build_report
 from claimiq.retrieval.corpus import corpus_version, load_corpus
@@ -33,6 +36,7 @@ from claimiq.state import AuditResult, ClaimPacket
 from claimiq.tools.waterfall import PROFILES, simulate_room_downgrade
 
 SAMPLES = ROOT / "data" / "samples"
+WEB = ROOT / "web"
 
 app = FastAPI(title="ClaimIQ", version="1.0.0")
 
@@ -181,6 +185,7 @@ async def extract(file: UploadFile = File(...)) -> dict:
         # invoice and returned zero rows -- whereas actually finding a priced table is
         # strong evidence. So always try to extract, then let the result correct the guess.
         policy_terms = None
+        clinical_context = None
         if doc_id == "DOC-POLICY":
             # The schedule states sum insured, room limit and co-pay outright. Reading
             # them beats making the user retype what they just uploaded.
@@ -188,6 +193,14 @@ async def extract(file: UploadFile = File(...)) -> dict:
             policy_terms = found.model_dump() if found else None
             items, extracted = [], ExtractedBill(method="policy")
         else:
+            if doc_id == "DOC-DISCHARGE-SUMMARY":
+                # Same bargain as the policy branch: the summary states the dates, the
+                # diagnosis and the procedure. Unlike that branch this does not skip
+                # extraction -- the rule below still has to be able to correct a bill
+                # that keyword scoring misfiled as a summary.
+                found_context = await run_in_threadpool(extract_clinical_context, tmp_path)
+                clinical_context = found_context.model_dump() if found_context else None
+
             try:
                 items, extracted = await run_in_threadpool(extract_bill, tmp_path)
             except (APIError, LLMUnavailable) as exc:
@@ -211,7 +224,10 @@ async def extract(file: UploadFile = File(...)) -> dict:
                 "could not read this document. If it is a photo or scan, check the page "
                 "is straight, in focus and evenly lit.",
             )
-        else:
+        elif extracted.method != "policy":
+            # No priced table, so it is a supporting document -- unless a branch above
+            # already recorded what it did read. This used to overwrite unconditionally,
+            # which made the "policy schedule" label unreachable.
             extracted.method = "classified"
     except HTTPException:
         raise
@@ -233,8 +249,15 @@ async def extract(file: UploadFile = File(...)) -> dict:
         if suffix == ".pdf"
         else "Image"
     )
+    # Derived from the rows that were actually parsed, not from a sample and not from
+    # the model's own summary. None when the bill has no room row, which the UI turns
+    # into a question rather than a default.
+    stay = room_stay_from_items(items)
+
     return {
         "line_items": [i.model_dump(mode="json") for i in items],
+        "room_stay": stay.model_dump(mode="json") if stay else None,
+        "has_implant": any(i.head == "IMPLANT" for i in items),
         "room_category": extracted.room_category,
         "room_rate_per_day": extracted.room_rate_per_day,
         "room_days": extracted.room_days,
@@ -246,6 +269,7 @@ async def extract(file: UploadFile = File(...)) -> dict:
         "document_id": doc_id,
         "document_label": doc_label,
         "policy_terms": policy_terms,
+        "clinical_context": clinical_context,
     }
 
 
@@ -329,3 +353,35 @@ def analytics_ask(payload: dict) -> dict:
         "columns": list(frame.columns),
         "rows": frame.to_dict(orient="records"),
     }
+
+
+# --- static frontend -------------------------------------------------------
+#
+# Mounted last and deliberately: Starlette matches routes in registration order,
+# so every /api/* and /health route above is tried first and this only catches
+# what nothing else claimed. html=True makes GET / resolve to index.html.
+#
+# The SPA is hash-routed (#/audit, #/trace, ...), so the browser never sends the
+# server a request for those views -- the fragment after # is never transmitted.
+# That means no server-side fallback route is needed for deep links; only the
+# real static assets (css/js/vendor) and "/" itself need to resolve here.
+#
+# Gated on index.html rather than on the directory: the directory exists as an empty
+# scaffold, and mounting an empty directory made GET / return a bare 404.
+if (WEB / "index.html").is_file():
+    app.mount("/", StaticFiles(directory=WEB, html=True), name="web")
+else:
+
+    @app.get("/")
+    def root() -> dict:
+        """There is no SPA yet, so say where the UI actually is.
+
+        Someone who opens the API port in a browser -- which is the natural thing to
+        try -- should not get a bare 404 with nothing to act on.
+        """
+        return {
+            "service": "ClaimIQ API",
+            "ui": "the Streamlit app on http://127.0.0.1:8501 (start.ps1 runs both)",
+            "docs": "/docs",
+            "health": "/health",
+        }

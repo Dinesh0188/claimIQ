@@ -3,6 +3,38 @@
 > UNVERIFIED SNAPSHOT. Compiled from publicly circulated non-payable item lists.
 > Not checked against any current IRDAI circular. Treat as a dated approximation.
 
+<!-- source:
+jurisdiction: IN
+list: LIST_I_OPTIONAL
+bearer: PATIENT
+severity: INFO
+source_id: IRDAI-2019-176
+citation: Annexure I — items that may be retained as optional items
+citation_precision: list
+-->
+
+<!--
+severity INFO: the patient bears these, and legitimately so. Telling the family at
+admission is worth money to them; it is not a defect in the hospital's billing. The
+hospital-borne lists (II/III/IV) are WARNING because those are an error that repeats.
+
+citation_precision `list`: these items correspond to Annexure I as a whole. No item
+here has been matched line-by-line against the annexure, so no chunk may claim an item
+number. Verify an item against the official text and you may override this per chunk:
+
+    <!~~ chunk_id: L1-009 | citation_precision: item | citation: Annexure I item 12 ~~>
+
+source is IRDAI-2019-176 rather than IRDA-2016-146 because the 2019 modification
+replaced the Annexure I optional-items list specifically. Lists II-IV still cite 2016.
+-->
+
+<!--
+NOTE ON PRESENTATION: everything above the first chunk header is discarded by the
+parser. It is here for a human reading the file. The machine-readable version of this
+warning is the `status = "unverified"` on both sources in corpus/SOURCES.toml, which is
+what actually drives the banner in the product.
+-->
+
 These are personal, convenience or comfort items. They are legitimately non-payable and
 the correct remediation is to **tell the patient at admission and take a signed
 acknowledgement** — not to absorb them.

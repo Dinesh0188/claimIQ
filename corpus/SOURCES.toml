@@ -1,0 +1,102 @@
+# Rule source registry.
+#
+# Every chunk in the corpus names a `source_id` that must resolve to an entry here.
+# The loader fails closed if it does not -- a rule whose authority cannot be named is
+# not a rule, it is an opinion, and this product is not allowed to ship opinions as
+# determinations.
+#
+# HOW TO READ `status`
+#   in_force    A human has confirmed this document is the operative one today, and
+#               recorded the date in `verified_on`.
+#   superseded  A later document replaces it. `superseded_by` names which.
+#   unverified  Nobody has checked. THIS IS THE DEFAULT AND IT IS NOT A FORMALITY --
+#               the UI shows a standing banner for every rule resting on an
+#               unverified source, and it should, until somebody does the work.
+#
+# Nothing in this file may be filled in from memory. `reference`, `published` and
+# `url` are transcribed from the issuing body's own publication. If a field cannot be
+# sourced it is left empty rather than guessed.
+
+# ---------------------------------------------------------------------------
+# India
+# ---------------------------------------------------------------------------
+
+[[source]]
+source_id = "IRDA-2016-146"
+jurisdiction = "IN"
+title = "Guidelines on Standardization in Health Insurance"
+reference = "IRDA/HLT/REG/CIR/146/07/2016"
+publisher = "Insurance Regulatory and Development Authority of India"
+url = "https://policyholder.gov.in/guidelines-on-standardization-in-health-insurance"
+published = 2016-07-29
+retrieved = 2026-08-01
+status = "unverified"
+note = """
+Chapter III with Annexures I-IV is the origin of this corpus's four lists:
+Annexure I   items that may be retained as optional items (List I)
+Annexure II  costs subsumed into room charges (List II)
+Annexure III costs subsumed into procedure charges (List III)
+Annexure IV  costs subsumed into the costs of treatment (List IV)
+
+CURRENCY IS UNRESOLVED. Annexure I was revised by IRDAI-2019-176, and the 2024 Master
+Circular (IRDAI-2024-MC) consolidated 55 earlier circulars -- whether these Guidelines
+are among them has not been checked. Until someone reads the 2024 circular's repeal
+schedule, every rule citing this document is served with a staleness warning.
+"""
+
+[[source]]
+source_id = "IRDAI-2019-176"
+jurisdiction = "IN"
+title = "Modification Guidelines on Standardization in Health Insurance"
+reference = "IRDAI/HLT/REG/CIR/176/09/2019"
+publisher = "Insurance Regulatory and Development Authority of India"
+url = "https://irdai.gov.in/document-detail?documentId=392476"
+published = 2019-09-27
+retrieved = 2026-08-01
+status = "unverified"
+note = """
+Replaces the Annexure I optional-items list carried by IRDA-2016-146. Binding on all
+health products filed on or after 2019-10-01; non-compliant existing products were to
+be withdrawn from 2020-10-01.
+"""
+
+[[source]]
+source_id = "IRDAI-2024-MC"
+jurisdiction = "IN"
+title = "Master Circular on Health Insurance Business, 2024"
+reference = ""
+publisher = "Insurance Regulatory and Development Authority of India"
+url = "https://irdai.gov.in/"
+published = 2024-05-29
+retrieved = 2026-08-01
+status = "unverified"
+note = """
+Consolidates and replaces 55 earlier circulars. Recorded here because it is the most
+likely superseder of IRDA-2016-146 and IRDAI-2019-176, NOT because any rule cites it --
+no chunk does. `reference` is empty because the circular number was not transcribed
+from the issuing body's own publication and will not be guessed.
+
+RESOLVING THIS IS THE HIGHEST-VALUE ITEM IN THIS FILE. It decides whether the corpus
+rests on live regulation or on a historical snapshot.
+"""
+
+# ---------------------------------------------------------------------------
+# Synthetic -- not regulation
+# ---------------------------------------------------------------------------
+
+[[source]]
+source_id = "SYNTHETIC-POLICY"
+jurisdiction = "IN"
+title = "Synthetic policy wording (illustrative, not any insurer's contract)"
+reference = ""
+publisher = "ClaimIQ"
+url = ""
+published = 2026-07-26
+retrieved = 2026-08-01
+status = "unverified"
+note = """
+The `corpus/policy/` chunks. Written to illustrate how a room-rent cap and a
+proportionate deduction are worded; they are not transcribed from any real policy and
+must never be presented as one. Kept in the registry so that the fact they are
+synthetic travels with the citation instead of being a caveat in a README nobody opens.
+"""

@@ -3,6 +3,16 @@
 > UNVERIFIED SNAPSHOT. Compiled from publicly circulated non-payable item lists.
 > Not checked against any current IRDAI circular. Treat as a dated approximation.
 
+<!-- source:
+jurisdiction: IN
+list: LIST_IV_TREATMENT
+bearer: HOSPITAL
+severity: WARNING
+source_id: IRDA-2016-146
+citation: Annexure IV — costs subsumed into the costs of treatment
+citation_precision: list
+-->
+
 Items deemed included in the overall cost of treatment. Like Lists II and III, billing them
 separately produces a deduction the hospital absorbs.
 

@@ -23,7 +23,7 @@ def main() -> None:
     print(f"corpus version : {corpus_version()}")
     print(f"chunks         : {len(chunks)}")
 
-    by_list = Counter(c.list_name or c.meta.get("topic", "policy") for c in chunks)
+    by_list = Counter(c.list_name or c.topic or "policy" for c in chunks)
     for name, count in sorted(by_list.items()):
         print(f"  {name:<22} {count}")
 

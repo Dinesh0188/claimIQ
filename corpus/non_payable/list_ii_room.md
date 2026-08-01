@@ -3,6 +3,16 @@
 > UNVERIFIED SNAPSHOT. Compiled from publicly circulated non-payable item lists.
 > Not checked against any current IRDAI circular. Treat as a dated approximation.
 
+<!-- source:
+jurisdiction: IN
+list: LIST_II_ROOM
+bearer: HOSPITAL
+severity: WARNING
+source_id: IRDA-2016-146
+citation: Annexure II — costs subsumed into room charges
+citation_precision: list
+-->
+
 **This list is where the money is.** These items are already deemed to be covered by the
 room tariff. Billing them as separate lines does not get them paid — it gets them deducted,
 and the hospital cannot pass them to the patient either. Every one of these is a billing
