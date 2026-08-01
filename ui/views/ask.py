@@ -14,7 +14,13 @@ health = st.session_state["health"]
 page_header("Ask about your claims", "Plain English. The query it runs is shown to you.")
 
 if not (health["key_present"] and health["ai_enabled"]):
-    st.warning("This page needs a model provider. Add a key in `providers.json`.")
+    st.warning(
+        "Asking questions in plain English needs a model provider, and none is "
+        "configured. Everything else in ClaimIQ works without one — auditing a claim "
+        "falls back to deterministic rules."
+    )
+    st.page_link("views/audit.py", label="Check a claim instead", icon=None)
+    st.caption("To enable this page, add a provider key to `providers.json` and restart.")
     st.stop()
 
 EXAMPLES = [
@@ -33,7 +39,12 @@ if st.button("Ask", type="primary") and question.strip():
         try:
             answer = api_post("/api/analytics/ask", {"question": question})
         except Exception as exc:  # noqa: BLE001
-            st.error(f"Rejected: {exc}")
+            # "Rejected" was applied to guardrail refusals, timeouts and 500s alike,
+            # so a user whose network dropped was told their question was refused.
+            st.error(
+                f"That question could not be answered: {exc}\n\n"
+                f"Try rephrasing it, or pick one of the examples above."
+            )
             st.stop()
 
     st.caption(answer["explanation"])

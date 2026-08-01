@@ -15,13 +15,18 @@ page_header("How this claim was processed", "Each step, what it cost, and what i
 
 result = st.session_state.get("result")
 if result is None:
-    st.info("Run an audit first — this page shows how that claim was processed.")
+    # Was a dead end: it named the action and offered no way to take it.
+    st.info("Check a claim first — this page then shows how that claim was processed.")
+    st.page_link("views/audit.py", label="Check a claim", icon=None)
     st.stop()
 
 try:
     run = api_get(f"/api/trace/{result['claim_id']}")
-except Exception:  # noqa: BLE001
-    st.warning("No trace stored for this claim.")
+except Exception as exc:  # noqa: BLE001
+    # A bare `except` here asserted one specific cause -- "no trace stored" -- for a
+    # network failure, a 500 and a genuine 404 alike. If the API just went down, the
+    # user was told their trace was never written.
+    st.warning(f"The processing trace could not be loaded: {exc}")
     st.stop()
 
 c1, c2, c3, c4 = st.columns(4)

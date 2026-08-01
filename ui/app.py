@@ -17,7 +17,9 @@ sys.path.insert(0, str(UI_DIR))
 
 from _shared import BRAND, CSS, require_api, sidebar  # noqa: E402
 
-st.set_page_config(page_title=f"{BRAND} — claim audit", page_icon="🏥", layout="wide")
+# No page_icon: an emoji favicon is the first thing a user sees and the last thing
+# a clinical tool should look like. Streamlit falls back to its own mark.
+st.set_page_config(page_title=f"{BRAND} — claim audit", layout="wide")
 st.markdown(CSS, unsafe_allow_html=True)
 
 health = require_api()
@@ -26,10 +28,10 @@ sidebar(health)
 
 navigation = st.navigation(
     [
-        st.Page(UI_DIR / "views" / "audit.py", title="Audit", icon="🏥", default=True),
-        st.Page(UI_DIR / "views" / "trace.py", title="Agent trace", icon="🔍"),
-        st.Page(UI_DIR / "views" / "dashboard.py", title="Leakage dashboard", icon="📊"),
-        st.Page(UI_DIR / "views" / "ask.py", title="Ask the portfolio", icon="💬"),
+        st.Page(UI_DIR / "views" / "audit.py", title="Check a claim", default=True),
+        st.Page(UI_DIR / "views" / "dashboard.py", title="Leakage dashboard"),
+        st.Page(UI_DIR / "views" / "ask.py", title="Ask the portfolio"),
+        st.Page(UI_DIR / "views" / "trace.py", title="How it decided"),
     ]
 )
 navigation.run()
