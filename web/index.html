@@ -1,0 +1,461 @@
+<!doctype html>
+<!--
+  ClaimIQ landing page.
+
+  Served by the FastAPI app at "/" (claimiq/api.py mounts web/ when this file exists).
+
+  RULES THIS PAGE IS HELD TO
+  - Every figure below comes from a real audit of data/samples/cardiac.json. Nothing
+    is illustrative, rounded for effect, or invented. `tests/test_landing.py` re-runs
+    that audit and fails if any number, rule id or citation on this page has drifted,
+    so the page cannot quietly become a mockup.
+  - No customer logos, testimonials, case studies or accuracy claims that are not
+    measured. Where a number would need real deployment data, there is a clearly
+    marked PLACEHOLDER for the owner to fill in, not a plausible-looking guess.
+  - The two performance figures quoted are from scripts/bench_classify.py against 87
+    hand-labelled line items, and the method is stated next to them.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClaimIQ — catch the deduction before the insurer does</title>
+<meta name="description" content="ClaimIQ audits an Indian hospital's claim packet before it goes to the TPA, and shows what the insurer will disallow, what the patient owes, and what the hospital is silently writing off on every claim.">
+<meta name="theme-color" content="#0c0d10">
+<link rel="canonical" href="/">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="ClaimIQ — catch the deduction before the insurer does">
+<meta property="og:description" content="Audit the claim packet before it goes to the TPA. Every deduction cites the rule it came from.">
+<meta property="og:image" content="/og.png">
+<meta property="og:image:alt" content="ClaimIQ: a claim split three ways — insurer settlement, patient liability, hospital write-off.">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@500;800&display=swap">
+<link rel="stylesheet" href="/css/site.css">
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-head">
+  <div class="wrap">
+    <a class="brand" href="/">
+      <b>ClaimIQ</b>
+      <span>Pre-submission audit</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="#how">How it works</a>
+      <a href="#proof">What it shows</a>
+      <a href="#trust">Security &amp; data</a>
+      <a href="#faq">FAQ</a>
+      <a class="btn btn-primary" href="http://127.0.0.1:8501">Check a claim</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ================= HERO ================= -->
+<section class="hero">
+  <div class="wrap">
+    <p class="eyebrow">For hospital billing and TPA desks</p>
+    <h1>Catch the deduction before the insurer does.</h1>
+    <p class="lede">
+      You submit the packet. Three weeks later the money comes back short, with a
+      deduction sheet nobody on the desk fully understands. The patient has gone home,
+      the bill is closed, and the difference is a write-off or a fight.
+    </p>
+    <p class="lede">
+      ClaimIQ reads the packet <strong>before</strong> it goes to the TPA and splits the
+      bill three ways — so the argument happens while you can still do something about it.
+    </p>
+    <div class="hero-actions">
+      <a class="btn btn-primary btn-lg" href="http://127.0.0.1:8501">Check a claim</a>
+      <a class="btn btn-lg" href="#proof">See a real finding</a>
+    </div>
+
+    <div class="three-up">
+      <div class="card card-settled">
+        <h2>What the insurer pays</h2>
+        <p>
+          What actually settles once the room limit, sub-limits and co-pay are applied —
+          shown as a range, because insurers read the proportionate-deduction rule
+          differently and pretending otherwise would be a guess with a decimal point.
+        </p>
+      </div>
+      <div class="card card-patient">
+        <h2>What the patient owes</h2>
+        <p>
+          Optional items and policy deductions, knowable at admission instead of at the
+          discharge counter. The room-rent trap is the big one: a room over the cap
+          scales down the surgeon, OT and nursing charges too.
+        </p>
+      </div>
+      <div class="card card-hospital">
+        <h2>What you are writing off</h2>
+        <p>
+          Charges already covered by the room or procedure rate. Billed anyway, paid by
+          nobody, and repeating on every claim until the billing master is corrected.
+          This is the number a blocklist cannot show you.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PROOF ================= -->
+<section id="proof">
+  <div class="wrap">
+    <p class="eyebrow">Actual output</p>
+    <h2>A real claim, a real finding, a real citation.</h2>
+    <p class="lede">
+      Below is ClaimIQ's output for the cardiac claim in this repository — a ₹4,10,000
+      CABG admission, eight days in a room billed at ₹12,000/day against a ₹6,000/day
+      policy cap. These are the figures from the <strong>offline</strong> run, with no
+      language model configured, so anyone with the repository can reproduce them
+      exactly. The test suite re-runs this audit and fails if any number below has
+      drifted, so this panel cannot quietly become a mockup.
+    </p>
+
+    <div class="proof">
+      <div class="proof-bar">Claim SYNTHETIC-CARDIAC-001 &middot; profile: typical</div>
+      <div class="proof-body">
+
+        <div class="verdict">
+          <div class="verdict-mark" aria-hidden="true">[!]</div>
+          <div>
+            <div class="verdict-title">Needs attention</div>
+            <p class="verdict-detail">
+              4 blocker, 13 warning, 4 info. Resolve blockers before submitting — each
+              finding cites the rule it came from.
+            </p>
+          </div>
+        </div>
+
+        <div class="figures">
+          <div class="fig fig-loss">
+            <div class="fig-label">Hospital absorbs</div>
+            <div class="fig-value">₹6,380</div>
+          </div>
+          <div class="fig">
+            <div class="fig-label">Likely settlement</div>
+            <div class="fig-value">₹2,28,317</div>
+          </div>
+          <div class="fig">
+            <div class="fig-label">Patient pays</div>
+            <div class="fig-value">₹1,75,304</div>
+          </div>
+          <div class="fig">
+            <div class="fig-label">Gross bill</div>
+            <div class="fig-value">₹4,10,000</div>
+          </div>
+        </div>
+
+        <h3 class="proof-sub">One finding, opened</h3>
+        <div class="finding">
+          <span class="finding-amount">₹1,800</span>
+          <span class="sev sev-warning">Warning</span>
+          <span class="finding-title">Surgical drapes</span>
+          <dl class="kv">
+            <dt>Found</dt><dd>Surgical drapes</dd>
+            <dt>Expected</dt><dd>not billed separately — surgical drapes</dd>
+            <dt>Field</dt><dd><code>line_items.description</code></dd>
+          </dl>
+          <div class="cite">L3-001 — IRDA/HLT/REG/CIR/146/07/2016, Annexure III — costs subsumed into procedure charges</div>
+          <p class="rule-text">
+            <strong>Surgical drapes</strong> — Theatre draping is part of performing the
+            procedure.
+          </p>
+        </div>
+
+        <h3 class="proof-sub">And the arithmetic behind the biggest number</h3>
+        <div class="finding">
+          <span class="finding-amount">₹97,685</span>
+          <span class="sev sev-blocker">Room rent proportionate</span>
+          <p class="small muted finding-note">
+            Associated charges scaled by the ratio the room exceeded its cap, under the
+            &lsquo;typical&rsquo; insurer profile.
+          </p>
+          <div class="math">associated charges     Rs 195,370.00
+heads included         CONSULTATION, NURSING, OTHER, PROCEDURE
+heads excluded         IMPLANT, INVESTIGATION, PHARMACY, ROOM
+eligible proportion    6,000 / 12,000 = 0.5000
+
+195,370.00 x (1 - 0.5000) = 97,685.00</div>
+        </div>
+
+        <p class="small muted flush">
+          Amounts are exact to the paisa and rounded to the nearest rupee for display,
+          halves up. The model never does arithmetic — a deterministic calculator does,
+          and a verifier rejects any explanation whose figures the calculator did not
+          produce.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= HOW ================= -->
+<section id="how">
+  <div class="wrap">
+    <p class="eyebrow">Three steps</p>
+    <h2>Upload the packet. Read the three numbers. Fix the billing master.</h2>
+
+    <div class="steps">
+      <div class="step">
+        <h3>Upload what you already have</h3>
+        <p>
+          Bill, discharge summary, claim form, policy schedule, reports. Native PDFs are
+          parsed exactly; scans and phone photos are read with on-device OCR. The room
+          rate, the dates and the diagnosis are read out of your documents rather than
+          retyped — and anything a document does not state, ClaimIQ asks for instead of
+          assuming.
+        </p>
+      </div>
+      <div class="step">
+        <h3>See the split before you submit</h3>
+        <p>
+          Estimated settlement, patient liability and hospital write-off, with a range
+          across three insurer interpretations. Every deduction is expandable to the
+          rule, its citation and the arithmetic, so you can check the number rather than
+          trust it.
+        </p>
+      </div>
+      <div class="step">
+        <h3>Stop the leak at source</h3>
+        <p>
+          List I items are the patient's cost — tell them at admission. Lists II, III and
+          IV are a billing-template error that repeats on every claim carrying those
+          lines. The dashboard ranks them by aggregate loss across your whole book, so
+          you fix the expensive ones first.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= TRUST ================= -->
+<section id="trust">
+  <div class="wrap">
+    <p class="eyebrow">Before you ask procurement</p>
+    <h2>Where the rules come from, and where your data goes.</h2>
+    <p class="lede">
+      This is the section most tools leave vague. Straight answers, including the
+      uncomfortable ones.
+    </p>
+
+    <div class="trust">
+      <div class="card">
+        <h3>Where the rule data comes from</h3>
+        <p class="small muted">
+          Every non-payable determination cites a rule in an inspectable corpus, and every
+          rule names the document it derives from:
+        </p>
+        <ul>
+          <li><strong>Lists I–IV</strong> correspond to Annexures I–IV of the IRDAI
+            Guidelines on Standardization in Health Insurance
+            (<span class="cite">IRDA/HLT/REG/CIR/146/07/2016</span>), with Annexure I as
+            revised by <span class="cite">IRDAI/HLT/REG/CIR/176/09/2019</span>.</li>
+          <li>Policy wording used for the deduction mechanics is <strong>synthetic and
+            labelled as such</strong> — it illustrates how a room cap works; it is not any
+            insurer's contract.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3>How current it is — honestly</h3>
+        <p class="small muted">
+          The corpus is a snapshot, and the product says so on every audit rather than
+          burying it:
+        </p>
+        <ul>
+          <li>Each source carries a published date, a retrieved date and a verification
+            status. Nothing is currently marked verified, so <strong>every audit shows a
+            standing notice to that effect</strong>.</li>
+          <li>Whether the 2024 IRDAI Master Circular supersedes the 2016/2019 guidelines
+            has not been confirmed, and the product does not claim it either way.</li>
+          <li>Rules that cannot name their source do not load. The corpus fails closed
+            rather than serving an unattributable determination.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3>PHI and where it travels</h3>
+        <ul>
+          <li>Runs <strong>locally</strong>, bound to <code>127.0.0.1</code>. Documents are
+            parsed on your machine and the database is a local file.</li>
+          <li>OCR is on-device. A native PDF with a text layer is parsed with
+            <strong>no model call at all</strong>.</li>
+          <li>Scans and photos need a language model to structure the OCR text. If you
+            configure a provider, that text — which contains clinical detail — is sent to
+            it. That is stated plainly because it is the question a compliance officer
+            will ask.</li>
+          <li>There is <strong>no authentication and no multi-tenancy</strong>. It is a
+            single-user local tool. Running it against real claims in a shared
+            environment would need auth, tenancy and audit logging first.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3>What it is not</h3>
+        <ul>
+          <li>Not an adjudicator. It <strong>estimates</strong> likely deductions under
+            configurable rules; a human decides.</li>
+          <li>Not a claims-management system. The audit is stateless — it does not submit
+            or track anything.</li>
+          <li>Not a source of legal truth, and it says so on screen.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="note note-spaced">
+      <strong>Measured, not claimed.</strong> With no model configured, the offline
+      classifier identifies <strong>74.6%</strong> of genuinely non-payable items and
+      wrongly disallows <strong>0.0%</strong> of genuine medical charges, measured against
+      87 hand-labelled line items (<code>scripts/bench_classify.py</code>). Roughly one
+      non-payable item in four is missed in that mode, and the product states this on
+      every audit rather than presenting an unmatched line as a clean one.
+      <!-- PLACEHOLDER (owner to fill): rupees recovered, claims processed, hospitals
+           live, time-to-payment improvement, A/R days. These require real deployment
+           data. Do not publish estimates in their place. -->
+    </div>
+  </div>
+</section>
+
+<!-- ================= FAQ ================= -->
+<section id="faq">
+  <div class="wrap">
+    <p class="eyebrow">Objections</p>
+    <h2>What a billing director actually asks.</h2>
+
+    <div class="faq">
+      <details>
+        <summary>We already know the non-payable list. What does this add?</summary>
+        <div class="answer">
+          <p>
+            A blocklist tells you an item is non-payable. It does not tell you
+            <em>who eats it</em>, and that is where the money is. List I is the patient's
+            cost — a conversation at admission. Lists II, III and IV are yours: charges
+            already deemed covered by the room, procedure or treatment rate, which you
+            cannot bill to the insurer or to the patient. Those repeat on every claim
+            carrying the same line, forever, until someone changes the billing master.
+          </p>
+          <p>
+            ClaimIQ models the bearer explicitly, which is why it can produce a
+            hospital-write-off number at all.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Can I trust a number an AI produced?</summary>
+        <div class="answer">
+          <p>
+            The model does no arithmetic. Every rupee comes from a deterministic
+            calculator working in exact decimal, and a verifier rejects any explanation
+            containing a figure the calculator did not produce. The three buckets are
+            checked to sum to the gross bill on every single audit.
+          </p>
+          <p>
+            The model's job is judgment — deciding which catalog rule an oddly-worded bill
+            line matches — and even there it must cite the rule it decided from. An
+            uncited deduction is discarded rather than shown.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>What happens when it cannot read a line?</summary>
+        <div class="answer">
+          <p>
+            It says so. Lines it cannot identify are marked unassessed rather than
+            reported as payable, they are excluded from the coverage figure, and if enough
+            of the bill is unreadable the verdict becomes &ldquo;could not fully check this
+            claim&rdquo; instead of a clean result.
+          </p>
+          <p>
+            &ldquo;We found nothing&rdquo; and &ldquo;we could not look&rdquo; are
+            different answers and the screen distinguishes them.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Does patient data leave our network?</summary>
+        <div class="answer">
+          <p>
+            Not for native PDFs — those are parsed locally with no model call. For scans
+            and photos, OCR runs on your machine but the resulting text is sent to
+            whichever language-model provider you configure, and that text contains
+            clinical detail. If that is unacceptable, run without a provider: auditing
+            still works on deterministic rules, with the reduced recall stated above.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Is this HIPAA/IRDAI compliant, and can we deploy it hospital-wide?</summary>
+        <div class="answer">
+          <p>
+            Not as it stands, and the honest answer matters more than a reassuring one.
+            There is no authentication, no per-user access control and no audit trail of
+            who viewed which claim. It is a single-user local tool. A shared or
+            hospital-wide deployment needs those three things built first.
+          </p>
+          <p>
+            The rule corpus is also an unverified snapshot that has not been checked
+            against the current IRDAI circular, which the product discloses on every
+            audit.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>How much work is it to get an answer?</summary>
+        <div class="answer">
+          <p>
+            Upload the documents you already assemble for the TPA. The room rate, stay
+            length, dates and diagnosis are read out of the bill and discharge summary.
+            You confirm what was read, fill anything the documents did not state, and run
+            the audit. There is no data entry beyond the fields no document supplied — and
+            missing ones block the audit rather than being quietly defaulted.
+          </p>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CTA ================= -->
+<section class="cta">
+  <div class="wrap">
+    <h2>See what your last claim was about to lose.</h2>
+    <p class="lede">
+      Run it on a claim you have already submitted and compare against the deduction
+      sheet you got back. That is the only demo worth doing.
+    </p>
+    <a class="btn btn-primary btn-lg" href="http://127.0.0.1:8501">Check a claim</a>
+  </div>
+</section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div>
+      <strong>ClaimIQ</strong> — pre-submission claim audit for Indian hospitals.<br>
+      Estimates, not adjudications. All sample data in this build is synthetic.
+    </div>
+    <div>
+      <a href="http://127.0.0.1:8501">Open the app</a> &middot;
+      <a href="/docs">API reference</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

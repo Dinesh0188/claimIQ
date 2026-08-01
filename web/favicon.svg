@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ClaimIQ">
+  <rect width="64" height="64" rx="14" fill="#0c0d10"/>
+  <!-- Three bars: the bill split three ways. Settled, patient, hospital. -->
+  <rect x="14" y="16" width="36" height="8" rx="4" fill="#3ddc84"/>
+  <rect x="14" y="28" width="26" height="8" rx="4" fill="#5aa9ff"/>
+  <rect x="14" y="40" width="16" height="8" rx="4" fill="#ff5c5c"/>
+</svg>
