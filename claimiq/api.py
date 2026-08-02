@@ -31,7 +31,19 @@ from fastapi.staticfiles import StaticFiles
 from openai import APIError
 from pydantic import BaseModel, Field
 
-from claimiq import analytics, jobs, ledger, observability, providers, store, tenancy, trace
+from claimiq import (
+    analytics,
+    idempotency,
+    jobs,
+    ledger,
+    observability,
+    providers,
+    recovery,
+    retention,
+    store,
+    tenancy,
+    trace,
+)
 from claimiq.config import ROOT, settings
 from claimiq.graph import audit
 from claimiq.llm import LLMUnavailable, try_client
@@ -182,6 +194,36 @@ def caller(request: Request) -> tenancy.Principal:
     return getattr(request.state, "principal", tenancy.ANONYMOUS)
 
 
+def idempotent(request: Request, principal: tenancy.Principal, payload: object):
+    """Return a stored response for a repeated `Idempotency-Key`, or None to proceed.
+
+    Returned rather than applied as a decorator so the route keeps control of what it
+    stores: the ledger entry is the thing being protected, and only the route knows
+    which part of its work was the side effect.
+    """
+    key = request.headers.get("Idempotency-Key", "").strip()
+    if not key:
+        return None, ""
+
+    digest = idempotency.fingerprint(payload)
+    try:
+        replay = idempotency.lookup(principal.tenant, key, digest)
+    except idempotency.KeyReused as exc:
+        # 409, not 200-with-the-old-answer. Reusing a key with a different body is a
+        # client bug, and serving the previous response would hide it behind something
+        # that looks like success.
+        raise HTTPException(409, str(exc)) from exc
+
+    if replay is not None:
+        METRICS.inc("claimiq_idempotent_replays_total", {"tenant": principal.tenant})
+        return JSONResponse(
+            status_code=replay.status_code,
+            content=replay.body,
+            headers={"Idempotency-Replayed": "true"},
+        ), digest
+    return None, digest
+
+
 def require(scope: str):
     """Dependency factory: 403 unless the caller holds `scope`.
 
@@ -284,10 +326,28 @@ def get_sample(name: str) -> ClaimPacket:
     return ClaimPacket.model_validate_json(path.read_text(encoding="utf-8"))
 
 
-@app.post("/api/audit")
+# `response_model` on the decorator rather than a return annotation, because this can
+# also return a JSONResponse on an idempotent replay. FastAPI passes a Response through
+# untouched, so the documented schema stays accurate for the path that produces it --
+# dropping the annotation would have quietly emptied this route's OpenAPI entry, which
+# is the one integrators read first.
+@app.post("/api/audit", response_model=AuditResult)
 def run_audit(
-    packet: ClaimPacket, principal: tenancy.Principal = Depends(require("audit"))
-) -> AuditResult:
+    packet: ClaimPacket,
+    request: Request,
+    principal: tenancy.Principal = Depends(require("audit")),
+):
+    """Audit one claim.
+
+    Send `Idempotency-Key` if your client retries. Without it a timeout followed by a
+    retry appends a second ledger entry, and the compliance record then says this claim
+    was audited twice -- the append-only store that makes retries traceable is exactly
+    what makes them expensive.
+    """
+    replay, digest = idempotent(request, principal, packet.model_dump(mode="json"))
+    if replay is not None:
+        return replay
+
     result = audit(
         packet,
         tenant=principal.tenant,
@@ -295,6 +355,15 @@ def run_audit(
         request_id=observability.request_id.get(),
     )
     METRICS.inc("claimiq_audits_total", {"result": result.verdict, "mode": "single"})
+
+    if digest:
+        idempotency.remember(
+            principal.tenant,
+            request.headers["Idempotency-Key"].strip(),
+            digest,
+            200,
+            result.model_dump(mode="json"),
+        )
     return result
 
 
@@ -510,8 +579,10 @@ def report(
 
 
 @app.get("/api/trace/{claim_id}")
-def get_trace(claim_id: str) -> dict:
-    run = trace.load_trace(claim_id)
+def get_trace(
+    claim_id: str, principal: tenancy.Principal = Depends(require("read"))
+) -> dict:
+    run = trace.load_trace(claim_id, _scope(principal))
     if run is None:
         raise HTTPException(404, "no trace for that claim")
     return run.model_dump(mode="json") | {
@@ -600,6 +671,24 @@ def analytics_missing_docs(
     return analytics.top_missing_documents(limit, _scope(principal)).to_dict(orient="records")
 
 
+@app.get("/api/analytics/recovery")
+def analytics_recovery(
+    annual_claim_volume: int = 0,
+    limit: int = 12,
+    principal: tenancy.Principal = Depends(require("read")),
+) -> dict:
+    """What fixing the billing master is worth per year, and what to fix first.
+
+    `annual_claim_volume` is the operator's own number when they have it; left at 0 the
+    projection extrapolates from the run rate actually observed and says so.
+    """
+    return recovery.recovery_model(
+        tenant=_scope(principal),
+        annual_claim_volume=annual_claim_volume or None,
+        limit=limit,
+    )
+
+
 @app.post("/api/analytics/ask")
 def analytics_ask(
     payload: dict, principal: tenancy.Principal = Depends(require("read"))
@@ -668,13 +757,18 @@ class BatchRequest(BaseModel):
 
 @app.post("/v1/batches", status_code=202)
 def submit_batch(
-    body: BatchRequest, principal: tenancy.Principal = Depends(require("audit"))
-) -> dict:
+    body: BatchRequest,
+    request: Request,
+    principal: tenancy.Principal = Depends(require("audit")),
+):
     """Queue many claims and return immediately.
 
     202 rather than 200, and it is not pedantry: the response describes work that has
     been accepted, not work that has been done, and a client that treats those the same
     will read `settlement: 0` off an empty job and believe it.
+
+    Idempotency matters more here than on a single audit: a retried 4,000-claim
+    submission is 4,000 duplicated ledger entries, not one.
     """
     cap = settings().max_batch_size
     if len(body.claims) > cap:
@@ -688,9 +782,19 @@ def submit_batch(
         duplicates = sorted({i for i in ids if ids.count(i) > 1})
         raise HTTPException(422, f"duplicate claim_id in batch: {', '.join(duplicates[:10])}")
 
+    replay, digest = idempotent(request, principal, ids)
+    if replay is not None:
+        return replay
+
     job = jobs.registry().submit(body.claims, principal.tenant, principal.key_id)
     log("batch.submitted", job_id=job.job_id, claims=len(body.claims), tenant=principal.tenant)
-    return job.summary(include_outcomes=False) | {"poll": f"/v1/batches/{job.job_id}"}
+    accepted = job.summary(include_outcomes=False) | {"poll": f"/v1/batches/{job.job_id}"}
+
+    if digest:
+        idempotency.remember(
+            principal.tenant, request.headers["Idempotency-Key"].strip(), digest, 202, accepted
+        )
+    return accepted
 
 
 @app.get("/v1/batches")
@@ -744,6 +848,40 @@ def verify_ledger(_: tenancy.Principal = Depends(require("admin"))) -> dict:
         "broken_at": status.broken_at,
         "reason": status.reason,
     }
+
+
+@app.post("/v1/retention/purge")
+def purge(
+    dry_run: bool = True, principal: tenancy.Principal = Depends(require("admin"))
+) -> dict:
+    """Delete claims and traces past the retention window.
+
+    `dry_run` defaults to True and the caller must pass `dry_run=false` explicitly.
+    A retention job is irreversible, it is usually run first by someone checking a
+    policy rather than enforcing it, and the difference is one query parameter --
+    so the destructive mode is the one you have to ask for.
+    """
+    report = retention.purge_expired(
+        tenant=_scope(principal),
+        claim_days=settings().claim_retention_days,
+        trace_days=settings().trace_retention_days,
+        dry_run=dry_run,
+    )
+    return report.as_dict()
+
+
+@app.post("/v1/retention/erase/{claim_id}")
+def erase(claim_id: str, principal: tenancy.Principal = Depends(require("admin"))) -> dict:
+    """Erase one claim's clinical record, leaving a tombstone in the ledger.
+
+    The chain is never broken. What survives is the arithmetic and the fact that an
+    erasure happened -- see `retention.py` for why that is the right side of the
+    trade, and for the limitation when claim ids themselves identify patients.
+    """
+    outcome = retention.erase_claim(claim_id, principal.tenant)
+    if not outcome["erased"]:
+        raise HTTPException(404, outcome["reason"])
+    return outcome
 
 
 @app.get("/metrics")

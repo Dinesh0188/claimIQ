@@ -222,6 +222,20 @@ class JobRegistry:
             seconds=round(time.perf_counter() - started, 2),
         )
 
+        # After the results are final, and never able to affect them. A dead receiver
+        # must not cost anyone their audit -- the durable record is the ledger, and a
+        # webhook is a notification about it rather than the thing itself.
+        try:
+            from claimiq import webhooks
+
+            webhooks.deliver_async(
+                "batch.completed",
+                job.summary(include_outcomes=False) | {"totals": job.totals()},
+                job.tenant,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log("batch.webhook_dispatch_failed", job_id=job.job_id, error=str(exc))
+
     # --- reads -------------------------------------------------------------
 
     def get(self, job_id: str, tenant: str | None = None) -> Job | None:

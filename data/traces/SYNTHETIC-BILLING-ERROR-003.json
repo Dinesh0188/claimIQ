@@ -1,10 +1,11 @@
 {
   "claim_id": "SYNTHETIC-BILLING-ERROR-003",
+  "tenant": "local",
   "nodes": [
     {
       "node": "classify",
-      "started_at": "2026-07-27T02:41:35.727860+00:00",
-      "latency_ms": 558,
+      "started_at": "2026-08-02T12:24:44.166336+00:00",
+      "latency_ms": 2452,
       "prompt_tokens": 0,
       "completion_tokens": 0,
       "llm_calls": 5,
@@ -15,7 +16,7 @@
     },
     {
       "node": "compute",
-      "started_at": "2026-07-27T02:41:36.287667+00:00",
+      "started_at": "2026-08-02T12:24:46.619372+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
@@ -27,7 +28,7 @@
     },
     {
       "node": "readiness",
-      "started_at": "2026-07-27T02:41:36.288664+00:00",
+      "started_at": "2026-08-02T12:24:46.621373+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
@@ -39,7 +40,7 @@
     },
     {
       "node": "explain",
-      "started_at": "2026-07-27T02:41:36.288664+00:00",
+      "started_at": "2026-08-02T12:24:46.622378+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
@@ -51,7 +52,7 @@
     },
     {
       "node": "verify",
-      "started_at": "2026-07-27T02:41:36.289663+00:00",
+      "started_at": "2026-08-02T12:24:46.624375+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
@@ -63,7 +64,7 @@
     },
     {
       "node": "report",
-      "started_at": "2026-07-27T02:41:36.291672+00:00",
+      "started_at": "2026-08-02T12:24:46.625371+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,

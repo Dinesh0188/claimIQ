@@ -1,21 +1,22 @@
 {
   "claim_id": "SYNTH-0004",
+  "tenant": "local",
   "nodes": [
     {
       "node": "classify",
-      "started_at": "2026-08-01T08:28:32.314096+00:00",
-      "latency_ms": 74025,
-      "prompt_tokens": 7151,
-      "completion_tokens": 2240,
+      "started_at": "2026-08-02T17:17:40.115578+00:00",
+      "latency_ms": 277,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
       "llm_calls": 3,
-      "cache_hits": 0,
+      "cache_hits": 3,
       "attempts": 1,
       "note": "",
       "error": ""
     },
     {
       "node": "compute",
-      "started_at": "2026-08-01T08:29:46.346434+00:00",
+      "started_at": "2026-08-02T17:17:40.393880+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
@@ -27,7 +28,7 @@
     },
     {
       "node": "readiness",
-      "started_at": "2026-08-01T08:29:46.346434+00:00",
+      "started_at": "2026-08-02T17:17:40.394891+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
@@ -39,19 +40,19 @@
     },
     {
       "node": "explain",
-      "started_at": "2026-08-01T08:29:46.346434+00:00",
-      "latency_ms": 13813,
-      "prompt_tokens": 2012,
-      "completion_tokens": 970,
+      "started_at": "2026-08-02T17:17:40.396884+00:00",
+      "latency_ms": 0,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
       "llm_calls": 1,
-      "cache_hits": 0,
+      "cache_hits": 1,
       "attempts": 1,
       "note": "",
       "error": ""
     },
     {
       "node": "verify",
-      "started_at": "2026-08-01T08:30:00.160669+00:00",
+      "started_at": "2026-08-02T17:17:40.397887+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
@@ -63,7 +64,7 @@
     },
     {
       "node": "report",
-      "started_at": "2026-08-01T08:30:00.160669+00:00",
+      "started_at": "2026-08-02T17:17:40.398884+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,

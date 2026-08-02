@@ -494,9 +494,33 @@ def _tenant_clause(tenant: str | None, params: tuple) -> tuple[str, tuple]:
 
 
 def reset() -> None:
+    """Empty the store, whether or not something else currently has it open.
+
+    Deleting the file is the cleaner reset and on Windows it is the one that fails:
+    an open handle makes `unlink` raise `PermissionError`, and the process most likely
+    to be holding one is the API -- which is running precisely when someone decides to
+    re-seed. `python scripts/seed_db.py` therefore died with a permissions error at the
+    one moment it was most obviously the right command to run.
+
+    So: try the file, and fall back to emptying the tables in place. The second path
+    leaves the schema and reclaims no disk, which for a store that is about to be
+    refilled with the same data is no loss at all.
+    """
     # WAL leaves two sidecar files next to the database. Deleting only the main file
     # leaves committed-but-uncheckpointed rows in the -wal, which SQLite replays into
     # the next database created at the same path -- so "reset" would not.
-    for path in (DB_PATH, DB_PATH.with_suffix(DB_PATH.suffix + "-wal"),
-                 DB_PATH.with_suffix(DB_PATH.suffix + "-shm")):
-        path.unlink(missing_ok=True)
+    try:
+        for path in (DB_PATH, DB_PATH.with_suffix(DB_PATH.suffix + "-wal"),
+                     DB_PATH.with_suffix(DB_PATH.suffix + "-shm")):
+            path.unlink(missing_ok=True)
+        return
+    except OSError:
+        pass
+
+    with connect() as conn:
+        # Children first: the FK is ON, so deleting parents before children would be
+        # refused rather than cascaded -- CASCADE fires on a row delete, and this is
+        # emptying tables.
+        conn.execute("DELETE FROM findings")
+        conn.execute("DELETE FROM doc_gaps")
+        conn.execute("DELETE FROM claims")

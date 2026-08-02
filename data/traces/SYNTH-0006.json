@@ -1,21 +1,22 @@
 {
   "claim_id": "SYNTH-0006",
+  "tenant": "local",
   "nodes": [
     {
       "node": "classify",
-      "started_at": "2026-08-01T08:31:27.757599+00:00",
-      "latency_ms": 48115,
-      "prompt_tokens": 4959,
-      "completion_tokens": 1524,
+      "started_at": "2026-08-02T17:17:40.648062+00:00",
+      "latency_ms": 169,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
       "llm_calls": 2,
-      "cache_hits": 0,
+      "cache_hits": 2,
       "attempts": 1,
       "note": "",
       "error": ""
     },
     {
       "node": "compute",
-      "started_at": "2026-08-01T08:32:15.869673+00:00",
+      "started_at": "2026-08-02T17:17:40.818256+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
@@ -27,7 +28,7 @@
     },
     {
       "node": "readiness",
-      "started_at": "2026-08-01T08:32:15.869673+00:00",
+      "started_at": "2026-08-02T17:17:40.819260+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
@@ -39,8 +40,8 @@
     },
     {
       "node": "explain",
-      "started_at": "2026-08-01T08:32:15.869673+00:00",
-      "latency_ms": 2155429,
+      "started_at": "2026-08-02T17:17:40.820258+00:00",
+      "latency_ms": 2419,
       "prompt_tokens": 0,
       "completion_tokens": 0,
       "llm_calls": 0,
@@ -51,7 +52,7 @@
     },
     {
       "node": "verify",
-      "started_at": "2026-08-01T09:08:11.294434+00:00",
+      "started_at": "2026-08-02T17:17:43.242540+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
@@ -63,7 +64,7 @@
     },
     {
       "node": "report",
-      "started_at": "2026-08-01T09:08:11.294434+00:00",
+      "started_at": "2026-08-02T17:17:43.244541+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,

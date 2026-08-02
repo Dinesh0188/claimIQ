@@ -54,12 +54,15 @@ export async function render(root) {
       stat("Room-rent deductions", rupees(summary.room_rent_deduction)),
       stat("Document gaps", String(summary.doc_gaps))),
 
+    el("div", { id: "recovery-card" }),
+
     el("div", { class: "grid g2", style: "margin-top:16px;align-items:start" },
       el("div", { id: "leak-card" }),
       el("div", { id: "docs-card" })),
     el("div", { id: "items-card" })
   );
 
+  loadRecovery();
   loadLeakage();
   loadDocs();
   loadItems();
@@ -92,6 +95,106 @@ async function panel(id, title, subtitle, fetcher, draw, emptyText) {
     clear(host.querySelector(".body")).append(
       banner("error", `Could not load: ${err.message}`));
   }
+}
+
+/* -------------------------------------------------------------- recovery -- */
+
+/** The business case, not another chart.
+ *
+ *  Every other panel here reports what happened. This one says what fixing it is
+ *  worth per year and which three lines to fix first, which is the only form in which
+ *  any of this reaches a finance meeting. The volume assumption is printed next to the
+ *  number rather than in a tooltip -- it is the thing the projection rests on, and a
+ *  reader who cannot see it is being asked to take the headline on trust.
+ */
+async function loadRecovery() {
+  const host = clear(document.getElementById("recovery-card"));
+  host.className = "card card-accent";
+  host.style.marginTop = "16px";
+  host.append(
+    el("div", { class: "card-head" },
+      el("h2", {}, "What fixing this is worth"),
+      el("span", { class: "small muted" }, "Recoverable by re-billing, projected annually")),
+    el("div", { class: "body" }, skeleton(4)));
+
+  let m;
+  try {
+    m = await api.get("/api/analytics/recovery", { limit: 8 });
+  } catch (err) {
+    clear(host.querySelector(".body")).append(banner("error", `Could not load: ${err.message}`));
+    return;
+  }
+
+  const body = clear(host.querySelector(".body"));
+  if (m.empty) {
+    body.append(el("p", { class: "small muted" }, m.reason));
+    return;
+  }
+
+  const volumeInput = el("input", {
+    type: "number", min: "1", step: "1", id: "vol",
+    placeholder: String(m.annual_claim_volume),
+    style: "width:120px",
+    onkeydown: (e) => { if (e.key === "Enter") reload(); },
+  });
+  const reload = async () => {
+    const v = Number(volumeInput.value) || 0;
+    // Re-fetch rather than scaling in the browser: the server owns the formula, and a
+    // second implementation here is a second thing to get wrong.
+    const next = await api.get("/api/analytics/recovery", { limit: 8, annual_claim_volume: v });
+    Object.assign(m, next);
+    draw();
+  };
+
+  const figures = el("div", { class: "figs" });
+  const table = el("div", { class: "table-wrap" });
+  const notes = el("div", {});
+
+  function draw() {
+    clear(figures).append(
+      stat("Recoverable per year", rupees(m.annual_recovery), "fig-loss",
+        `at ${Number(m.annual_claim_volume).toLocaleString("en-IN")} claims/year`),
+      stat("Top 3 fixes alone", rupees(m.top_three_recovery), "fig-loss",
+        "the shortlist that actually gets done"),
+      stat("Leak per claim", rupees(m.leak_per_claim),
+        "", `${m.leak_rate_pct}% of gross billed`),
+      stat("Observed", `${m.claims_audited} claims`,
+        "", `over ${m.months_observed} month(s)`));
+
+    clear(table).append(el("table", {},
+      el("thead", {}, el("tr", {},
+        el("th", {}, "Charge-master line"),
+        el("th", { class: "num" }, "On % of claims"),
+        el("th", { class: "num" }, "Avg when it appears"),
+        el("th", { class: "num" }, "Recoverable / year"),
+        el("th", {}, "Rule"))),
+      el("tbody", {}, m.items.map((i, n) => el("tr", {},
+        el("td", {},
+          // Rank badge: the list is an ordered remediation plan, and numbering it is
+          // what turns a table into one.
+          el("span", { class: "rank" }, String(n + 1)), i.item),
+        el("td", { class: "num" }, `${i.incidence_pct}%`),
+        el("td", { class: "num" }, rupees(i.avg_per_occurrence)),
+        el("td", { class: "num", style: "color:var(--hospital);font-weight:700" },
+          rupees(i.annual_recovery)),
+        el("td", { class: "xs muted mono" }, i.cited_rule || "—"))))));
+
+    clear(notes).append(
+      el("p", { class: "xs muted", style: "margin-top:14px" }, m.volume_source),
+      el("ul", { class: "xs muted", style: "margin-top:8px;padding-left:18px" },
+        m.assumptions.map((a) => el("li", { style: "margin-top:4px" }, a))));
+  }
+
+  draw();
+  body.append(
+    figures,
+    el("div", { class: "row", style: "gap:8px;align-items:end;margin:16px 0 4px" },
+      el("div", { class: "field", style: "margin:0" },
+        el("label", { for: "vol" }, "Your annual claim volume"),
+        volumeInput),
+      el("button", { class: "btn", onclick: reload }, "Recalculate")),
+    table,
+    notes);
 }
 
 const loadLeakage = () => panel(

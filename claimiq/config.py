@@ -65,6 +65,12 @@ class Settings:
     ledger_enabled: bool = True
     # Emit one JSON object per request on stdout instead of uvicorn's text line.
     json_logs: bool = False
+    # How long clinical detail is kept. Two years covers an Indian insurer's audit
+    # cycle; traces are debugging aids and age out far sooner. Nothing purges
+    # automatically -- there is no scheduler in this process, so the operator runs
+    # `scripts/purge.py` from cron and owns the decision.
+    claim_retention_days: int = 365 * 2
+    trace_retention_days: int = 90
 
     @property
     def has_key(self) -> bool:
@@ -96,4 +102,6 @@ def settings() -> Settings:
         batch_workers=_int("CLAIMIQ_BATCH_WORKERS", 4),
         ledger_enabled=_bool("CLAIMIQ_LEDGER", True),
         json_logs=_bool("CLAIMIQ_JSON_LOGS", False),
+        claim_retention_days=_int("CLAIMIQ_CLAIM_RETENTION_DAYS", 365 * 2),
+        trace_retention_days=_int("CLAIMIQ_TRACE_RETENTION_DAYS", 90),
     )

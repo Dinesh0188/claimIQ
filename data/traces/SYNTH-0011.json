@@ -1,21 +1,22 @@
 {
   "claim_id": "SYNTH-0011",
+  "tenant": "local",
   "nodes": [
     {
       "node": "classify",
-      "started_at": "2026-08-01T09:10:45.066232+00:00",
-      "latency_ms": 101625,
-      "prompt_tokens": 2517,
-      "completion_tokens": 406,
+      "started_at": "2026-08-02T17:17:46.763236+00:00",
+      "latency_ms": 767,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
       "llm_calls": 1,
-      "cache_hits": 0,
+      "cache_hits": 1,
       "attempts": 1,
       "note": "",
       "error": ""
     },
     {
       "node": "compute",
-      "started_at": "2026-08-01T09:12:26.681812+00:00",
+      "started_at": "2026-08-02T17:17:47.531154+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
@@ -27,7 +28,7 @@
     },
     {
       "node": "readiness",
-      "started_at": "2026-08-01T09:12:26.681812+00:00",
+      "started_at": "2026-08-02T17:17:47.532011+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
@@ -39,11 +40,11 @@
     },
     {
       "node": "explain",
-      "started_at": "2026-08-01T09:12:26.681812+00:00",
-      "latency_ms": 18505,
-      "prompt_tokens": 1300,
-      "completion_tokens": 813,
-      "llm_calls": 1,
+      "started_at": "2026-08-02T17:17:47.533164+00:00",
+      "latency_ms": 697,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "llm_calls": 0,
       "cache_hits": 0,
       "attempts": 1,
       "note": "",
@@ -51,7 +52,7 @@
     },
     {
       "node": "verify",
-      "started_at": "2026-08-01T09:12:45.200141+00:00",
+      "started_at": "2026-08-02T17:17:48.233435+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
@@ -63,7 +64,7 @@
     },
     {
       "node": "report",
-      "started_at": "2026-08-01T09:12:45.200141+00:00",
+      "started_at": "2026-08-02T17:17:48.236436+00:00",
       "latency_ms": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,

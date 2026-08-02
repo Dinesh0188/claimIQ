@@ -158,7 +158,7 @@ def audit(
     # A fresh ledger per run, so token attribution starts from zero even when the
     # cached client has been used by an earlier audit in this same context.
     reset_call_ledger()
-    run = trace.start_run(packet.claim_id)
+    run = trace.start_run(packet.claim_id, tenant)
     raw = graph().invoke(ClaimState(packet=packet))
     state = raw if isinstance(raw, ClaimState) else ClaimState.model_validate(raw)
     run.save()
