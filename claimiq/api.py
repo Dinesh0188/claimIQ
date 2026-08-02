@@ -921,8 +921,42 @@ def _scope(principal: tenancy.Principal) -> str | None:
 #
 # Gated on index.html rather than on the directory: the directory exists as an empty
 # scaffold, and mounting an empty directory made GET / return a bare 404.
+class RevalidatingStatics(StaticFiles):
+    """Static files that a browser re-checks instead of assuming it already has.
+
+    Starlette's StaticFiles sends `last-modified` and `etag` but no `cache-control`,
+    which leaves the freshness decision to the browser's heuristic -- and Chrome's
+    heuristic for a same-origin ES module is to keep using the copy it has, without
+    asking. The result is that a deploy changes the server and not the screen: the API
+    returns new fields, the module that renders them is three versions old, and the
+    page silently omits whatever it does not know about. It looks like a backend that
+    did not deploy, and no amount of reloading fixes it because a reload is exactly
+    what is being served from cache.
+
+    `no-cache` is the fix and it is not `no-store`: the browser still caches, it just
+    revalidates first, so an unchanged file comes back as a 304 with no body. The cost
+    is one conditional request per asset per load; the benefit is that what is on the
+    screen is what is on the server.
+
+    Genuinely immutable assets -- the fonts and images under vendor/, which are content
+    that never changes in place -- keep a long TTL, because revalidating those every
+    load is pure waste.
+    """
+
+    IMMUTABLE_SUFFIXES = (".woff2", ".woff", ".ttf", ".png", ".jpg", ".webp", ".ico")
+
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        path = str(full_path).lower()
+        if path.endswith(self.IMMUTABLE_SUFFIXES) and "/vendor/" in path.replace("\\", "/"):
+            response.headers["cache-control"] = "public, max-age=31536000, immutable"
+        else:
+            response.headers["cache-control"] = "no-cache"
+        return response
+
+
 if (WEB / "index.html").is_file():
-    app.mount("/", StaticFiles(directory=WEB, html=True), name="web")
+    app.mount("/", RevalidatingStatics(directory=WEB, html=True), name="web")
 else:
 
     @app.get("/")
