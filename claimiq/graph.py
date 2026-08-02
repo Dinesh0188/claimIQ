@@ -19,7 +19,7 @@ from functools import lru_cache
 from langgraph.graph import END, StateGraph
 
 from claimiq import trace
-from claimiq.llm import try_client
+from claimiq.llm import reset_call_ledger, try_client
 from claimiq.nodes.classify import classify_node
 from claimiq.nodes.compute import compute_node
 from claimiq.nodes.explain import explain_node
@@ -140,7 +140,24 @@ def _assessment(state: ClaimState) -> tuple[Decimal, list[str], list[str]]:
     return coverage, caveats, disclosures
 
 
-def audit(packet: ClaimPacket, persist: bool = True) -> AuditResult:
+def audit(
+    packet: ClaimPacket,
+    persist: bool = True,
+    *,
+    tenant: str = "local",
+    key_id: str = "anonymous",
+    request_id: str = "",
+) -> AuditResult:
+    """Run the graph over one claim.
+
+    `tenant`/`key_id`/`request_id` are provenance, not behaviour -- they change nothing
+    about the determination and exist so the ledger entry can say who asked. They
+    default to the local single-user values, which is what keeps `python -m claimiq.graph`
+    and the whole test suite working unchanged.
+    """
+    # A fresh ledger per run, so token attribution starts from zero even when the
+    # cached client has been used by an earlier audit in this same context.
+    reset_call_ledger()
     run = trace.start_run(packet.claim_id)
     raw = graph().invoke(ClaimState(packet=packet))
     state = raw if isinstance(raw, ClaimState) else ClaimState.model_validate(raw)
@@ -180,7 +197,24 @@ def audit(packet: ClaimPacket, persist: bool = True) -> AuditResult:
             result,
             ai_pipeline=state.ai_used,
             month=packet.context.discharge_date.strftime("%Y-%m"),
+            tenant=tenant,
         )
+
+    # The ledger records every determination, including the ones that are not persisted
+    # to the portfolio -- `persist=False` means "this was a what-if, keep it out of the
+    # dashboard", not "this never happened". A room-downgrade simulation that quietly
+    # left no trace would be the one call an auditor most wants to find.
+    #
+    # Never fatal. A compliance sink that can fail the request it is recording turns a
+    # disk-full into an outage, and the answer the user needed was already computed.
+    try:
+        from claimiq import ledger
+
+        ledger.record(
+            result, packet, tenant=tenant, key_id=key_id, request_id=request_id
+        )
+    except Exception as exc:  # noqa: BLE001
+        result.errors.append(f"audit ledger write failed: {type(exc).__name__}: {exc}")
 
     return result
 

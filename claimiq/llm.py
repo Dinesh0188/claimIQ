@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from contextvars import ContextVar
 from functools import lru_cache
 from typing import Any, TypeVar
 
@@ -92,6 +93,31 @@ class LLMCall(BaseModel):
     attempts: int = 1
 
 
+# The call ledger is per-context, not per-client.
+#
+# `try_client()` is lru_cached so every node shares one instance -- that is what makes
+# token attribution work at all. But one shared instance also meant one shared `calls`
+# list, and `trace.track` attributes usage by slicing it (`calls[before:]`). Under two
+# concurrent audits in FastAPI's threadpool, claim A's slice picks up claim B's calls,
+# so the Trace screen bills one claim for another's tokens. Same class of bug as the
+# module-global run trace, same fix: isolate by context, not by instance.
+_call_ledger: ContextVar[list[LLMCall] | None] = ContextVar("claimiq_llm_calls", default=None)
+
+
+def call_ledger() -> list[LLMCall]:
+    """This context's LLM calls, created on first use."""
+    ledger = _call_ledger.get()
+    if ledger is None:
+        ledger = []
+        _call_ledger.set(ledger)
+    return ledger
+
+
+def reset_call_ledger() -> None:
+    """Start a fresh ledger. Called at the top of every audit run."""
+    _call_ledger.set([])
+
+
 class LLMClient:
     def __init__(self, provider: Provider | None = None) -> None:
         if not settings().ai_enabled:
@@ -109,7 +135,11 @@ class LLMClient:
         )
         self.model = self.provider.model
         self.vision_model = self.provider.vision_model
-        self.calls: list[LLMCall] = []
+
+    @property
+    def calls(self) -> list[LLMCall]:
+        """Calls made in *this* context. See `call_ledger` for why it is not an attribute."""
+        return call_ledger()
 
     @property
     def has_vision(self) -> bool:

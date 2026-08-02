@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import time
 from decimal import Decimal
 
 import pandas as pd
 from pydantic import BaseModel
 
 from claimiq.llm import LLMClient, try_client
-from claimiq.store import claims_df, connect, doc_gaps_df, findings_df
+from claimiq.store import claims_df, doc_gaps_df, findings_df, scoped_connection
 
 
 def _sum(column) -> Decimal:
@@ -37,10 +38,10 @@ LIST_LABEL = {
 }
 
 
-def portfolio_summary() -> dict:
-    claims = claims_df()
-    findings = findings_df()
-    gaps = doc_gaps_df()
+def portfolio_summary(tenant: str | None = None) -> dict:
+    claims = claims_df(tenant)
+    findings = findings_df(tenant)
+    gaps = doc_gaps_df(tenant)
 
     if claims.empty:
         return {"empty": True}
@@ -75,10 +76,10 @@ def portfolio_summary() -> dict:
     }
 
 
-def leakage_by_cause() -> pd.DataFrame:
+def leakage_by_cause(tenant: str | None = None) -> pd.DataFrame:
     """Where the money goes, split by who absorbs it."""
-    claims = claims_df()
-    findings = findings_df()
+    claims = claims_df(tenant)
+    findings = findings_df(tenant)
     if claims.empty:
         return pd.DataFrame(columns=["cause", "amount", "bearer"])
 
@@ -111,8 +112,8 @@ def leakage_by_cause() -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values("amount", ascending=False).reset_index(drop=True)
 
 
-def top_leaking_items(limit: int = 10) -> pd.DataFrame:
-    findings = findings_df()
+def top_leaking_items(limit: int = 10, tenant: str | None = None) -> pd.DataFrame:
+    findings = findings_df(tenant)
     if findings.empty:
         return pd.DataFrame(columns=["description", "claims", "total_deducted"])
 
@@ -131,8 +132,8 @@ def top_leaking_items(limit: int = 10) -> pd.DataFrame:
     return grouped
 
 
-def top_missing_documents(limit: int = 10) -> pd.DataFrame:
-    gaps = doc_gaps_df()
+def top_missing_documents(limit: int = 10, tenant: str | None = None) -> pd.DataFrame:
+    gaps = doc_gaps_df(tenant)
     if gaps.empty:
         return pd.DataFrame(columns=["name", "severity", "claims"])
     return (
@@ -186,35 +187,124 @@ FORBIDDEN = re.compile(
     re.IGNORECASE,
 )
 
+# Rows a generated query may return, and how long it may run. Both are enforced here
+# rather than asked for in the prompt: SQL_SYSTEM tells the model to LIMIT 50, and a
+# model following an instruction is not a resource control. A cartesian join across
+# v_claims and v_findings is one token away at all times.
+MAX_ROWS = 200
+QUERY_TIMEOUT_S = 5.0
+
+_COMMENTS = re.compile(r"--[^\n]*|/\*.*?\*/", re.DOTALL)
+_STRINGS = re.compile(r"'(?:[^']|'')*'")
+
 
 class SQLAnswer(BaseModel):
     sql: str
     explanation: str
 
 
+def _analysable(sql: str) -> str:
+    """The query with comments removed and string literals blanked.
+
+    Both matter, and for different reasons.
+
+    Comments hide keywords from a keyword check -- `SELECT 1 /*`, `DROP`, `*/` reads as
+    harmless to a regex scanning the raw text. Strings cause the opposite failure: a
+    perfectly legitimate `WHERE description LIKE '%drop foot%'` trips the FORBIDDEN
+    list and the user is told their question is dangerous. Blanking rather than
+    deleting keeps offsets stable so error positions still make sense.
+    """
+    without_comments = _COMMENTS.sub(" ", sql)
+    return _STRINGS.sub(lambda m: "'" + " " * (len(m.group()) - 2) + "'", without_comments)
+
+
 def validate_sql(sql: str) -> str:
-    """Reject anything that is not a single read-only SELECT.
+    """Reject anything that is not a single read-only SELECT, then bound it.
 
     Guardrails are structural, not prompt-based: the model being well-behaved is
-    not a security control.
+    not a security control. Neither is the model being *correct* -- this also has to
+    hold when the question is adversarial, because /api/analytics/ask takes free text
+    from whoever can reach the endpoint and feeds it to something that writes SQL.
     """
     cleaned = sql.strip().rstrip(";").strip()
-    if not cleaned.lower().startswith(("select", "with")):
+    probe = _analysable(cleaned)
+
+    if not probe.strip().lower().startswith(("select", "with")):
         raise ValueError("only SELECT queries are allowed")
-    if ";" in cleaned:
+    if ";" in probe:
         raise ValueError("multiple statements are not allowed")
-    if FORBIDDEN.search(cleaned):
+    if FORBIDDEN.search(probe):
         raise ValueError("query contains a forbidden keyword")
 
-    referenced = set(re.findall(r"\b(?:from|join)\s+([a-zA-Z_][\w]*)", cleaned, re.IGNORECASE))
-    unknown = {t.lower() for t in referenced} - ALLOWED_TABLES
+    # CTE names are defined by the query itself, so they are legal targets of FROM/JOIN
+    # even though they are not tables. Without this, every `WITH monthly AS (...)`
+    # query -- which is what the model reaches for on any trend question -- was
+    # rejected as referencing an unknown table called `monthly`.
+    defined = {
+        name.lower()
+        for name in re.findall(r"(?:\bwith\b|,)\s*([a-zA-Z_]\w*)\s+as\s*\(", probe, re.IGNORECASE)
+    }
+    referenced = {
+        t.lower() for t in re.findall(r"\b(?:from|join)\s+([a-zA-Z_][\w]*)", probe, re.IGNORECASE)
+    }
+    unknown = referenced - ALLOWED_TABLES - defined
     if unknown:
         raise ValueError(f"unknown table(s): {', '.join(sorted(unknown))}")
+
+    # A LIMIT the model chose is a suggestion; this is the ceiling. Appending is safe
+    # because the statement is known single and known to end here.
+    if not re.search(r"\blimit\s+\d+\s*$", probe, re.IGNORECASE):
+        cleaned = f"{cleaned}\nLIMIT {MAX_ROWS}"
     return cleaned
 
 
-def ask(question: str, client: LLMClient | None = None) -> tuple[str, pd.DataFrame, str]:
+def _run_bounded(
+    sql: str, timeout_s: float = QUERY_TIMEOUT_S, tenant: str | None = None
+) -> pd.DataFrame:
+    """Execute read-only, scoped to one tenant, with a wall-clock ceiling.
+
+    SQLite has no statement timeout, so the interrupt goes through a progress handler:
+    the callback fires every N VDBE instructions and returning non-zero aborts the
+    statement. This is the only mechanism that stops a query that is *making progress*
+    but will not finish this decade -- a busy_timeout does not help, because nothing
+    is blocked.
+
+    Scoping happens in `scoped_connection`, not here and not in the SQL. The generated
+    query mentions no tenant and cannot be made to: the views it reads are temp views
+    that only contain this tenant's rows. See `store.scoped_connection`.
+    """
+    deadline = time.monotonic() + timeout_s
+
+    with scoped_connection(tenant) as conn:
+        conn.execute("PRAGMA query_only = ON")
+        conn.set_progress_handler(lambda: 1 if time.monotonic() > deadline else 0, 10_000)
+        try:
+            frame = pd.read_sql_query(sql, conn)
+        except sqlite3.OperationalError as exc:
+            if "interrupt" in str(exc).lower():
+                raise ValueError(
+                    f"the generated query was still running after {timeout_s:g}s and was "
+                    "stopped. Try a narrower question."
+                ) from exc
+            raise ValueError(f"SQLite rejected the generated query: {exc}") from exc
+        except sqlite3.Error as exc:
+            raise ValueError(f"SQLite rejected the generated query: {exc}") from exc
+        finally:
+            conn.set_progress_handler(None, 0)
+
+    return frame.head(MAX_ROWS)
+
+
+def ask(
+    question: str, client: LLMClient | None = None, tenant: str | None = None
+) -> tuple[str, pd.DataFrame, str]:
     """Natural language -> validated SQL -> dataframe."""
+    if len(question) > 500:
+        # Long free text into a prompt that writes SQL is where injection lives. It is
+        # not a complete defence -- validate_sql is -- but there is no legitimate
+        # 4,000-character question about this five-column schema.
+        raise ValueError("question is too long; keep it under 500 characters")
+
     client = client or try_client()
     if client is None:
         raise RuntimeError("Natural-language querying needs an LLM. Set LLM_API_KEY.")
@@ -223,12 +313,4 @@ def ask(question: str, client: LLMClient | None = None) -> tuple[str, pd.DataFra
         node="text_to_sql", system=SQL_SYSTEM, user=question, schema=SQLAnswer
     )
     sql = validate_sql(answer.sql)
-
-    with connect() as conn:
-        conn.execute("PRAGMA query_only = ON")
-        try:
-            frame = pd.read_sql_query(sql, conn)
-        except sqlite3.Error as exc:
-            raise ValueError(f"SQLite rejected the generated query: {exc}") from exc
-
-    return sql, frame, answer.explanation
+    return sql, _run_bounded(sql, tenant=tenant), answer.explanation

@@ -18,6 +18,19 @@ ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
 
 
+def _int(name: str, default: int) -> int:
+    raw = os.getenv(name, "").strip()
+    try:
+        return int(raw) if raw else default
+    except ValueError:
+        return default
+
+
+def _bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name, "").strip().lower()
+    return raw in {"1", "true", "yes", "on"} if raw else default
+
+
 @dataclass(frozen=True)
 class Settings:
     base_url: str
@@ -25,6 +38,33 @@ class Settings:
     model: str
     vision_model: str
     ai_enabled: bool
+
+    # --- deployment posture -------------------------------------------------
+    #
+    # Every one of these defaults to the single-user local demo, so cloning the repo
+    # and running `.\start.ps1` behaves exactly as it did before this section existed.
+    # An operator turns each on deliberately; nothing is half-enabled by accident.
+
+    # Principal definitions, `key:tenant:scopes` separated by commas. Empty means
+    # authentication is OFF -- stated in /health so an unauthenticated deployment is
+    # never a silent one.
+    api_keys_raw: str = ""
+    # Allowed browser origins for the SPA. Empty means same-origin only, i.e. no CORS
+    # headers at all, which is the correct default for a bundled frontend.
+    cors_origins_raw: str = ""
+    # Hard ceiling on an upload, enforced before the bytes are buffered. 25 MB fits a
+    # 40-page scanned bill at 300 dpi with room to spare.
+    max_upload_bytes: int = 25 * 1024 * 1024
+    # Requests per minute per principal, sliding window. 0 disables.
+    rate_limit_per_minute: int = 120
+    # Claims a single batch may carry, and how many run at once.
+    max_batch_size: int = 500
+    batch_workers: int = 4
+    # Append-only ledger of every audit. On by default: it is the compliance artefact,
+    # and a claims auditor that cannot say what it decided last Tuesday is not one.
+    ledger_enabled: bool = True
+    # Emit one JSON object per request on stdout instead of uvicorn's text line.
+    json_logs: bool = False
 
     @property
     def has_key(self) -> bool:
@@ -35,6 +75,10 @@ class Settings:
         """AI is usable only if it is switched on AND a real key is present."""
         return self.ai_enabled and self.has_key
 
+    @property
+    def cors_origins(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins_raw.split(",") if o.strip()]
+
 
 @lru_cache(maxsize=1)
 def settings() -> Settings:
@@ -44,4 +88,12 @@ def settings() -> Settings:
         model=os.getenv("LLM_MODEL", "openai/gpt-oss-120b"),
         vision_model=os.getenv("VISION_MODEL", "qwen/qwen3.6-27b"),
         ai_enabled=os.getenv("AI_ENABLED", "true").lower() == "true",
+        api_keys_raw=os.getenv("CLAIMIQ_API_KEYS", ""),
+        cors_origins_raw=os.getenv("CLAIMIQ_CORS_ORIGINS", ""),
+        max_upload_bytes=_int("CLAIMIQ_MAX_UPLOAD_BYTES", 25 * 1024 * 1024),
+        rate_limit_per_minute=_int("CLAIMIQ_RATE_LIMIT_PER_MINUTE", 120),
+        max_batch_size=_int("CLAIMIQ_MAX_BATCH_SIZE", 500),
+        batch_workers=_int("CLAIMIQ_BATCH_WORKERS", 4),
+        ledger_enabled=_bool("CLAIMIQ_LEDGER", True),
+        json_logs=_bool("CLAIMIQ_JSON_LOGS", False),
     )

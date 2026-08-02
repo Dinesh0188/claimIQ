@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
@@ -28,6 +29,10 @@ class NodeTrace(BaseModel):
 
 class RunTrace(BaseModel):
     claim_id: str
+    # Whose run this was. Defaulted rather than required so the traces already
+    # committed under data/traces -- written before tenants existed -- still parse and
+    # still resolve, as the local demo's own.
+    tenant: str = "local"
     nodes: list[NodeTrace] = Field(default_factory=list)
 
     @property
@@ -44,19 +49,29 @@ class RunTrace(BaseModel):
         path.write_text(self.model_dump_json(indent=2), encoding="utf-8")
 
 
-# The graph is synchronous and single-claim, so a module-level current run is
-# enough. No thread-locals for a problem that does not exist yet.
-_current: RunTrace | None = None
+# A ContextVar, not a module global.
+#
+# The graph is synchronous per claim, which made a module global look sufficient --
+# but FastAPI runs `def` endpoints in a threadpool, so two clients auditing at the
+# same moment both wrote to the same `_current`. The second `start_run` discarded the
+# first claim's partial trace, and every node that finished afterwards appended to the
+# wrong claim. The failure is silent and asymmetric: the numbers are right, only the
+# provenance is wrong, which is the worst kind of thing to be wrong in an auditor.
+#
+# Starlette copies the context per request before handing work to the threadpool, so
+# a ContextVar isolates concurrent runs without any locking. Batch workers do the same
+# thing explicitly (see jobs.py) by running each claim in its own copied context.
+_current: ContextVar[RunTrace | None] = ContextVar("claimiq_trace_run", default=None)
 
 
-def start_run(claim_id: str) -> RunTrace:
-    global _current
-    _current = RunTrace(claim_id=claim_id)
-    return _current
+def start_run(claim_id: str, tenant: str = "local") -> RunTrace:
+    run = RunTrace(claim_id=claim_id, tenant=tenant)
+    _current.set(run)
+    return run
 
 
 def current() -> RunTrace | None:
-    return _current
+    return _current.get()
 
 
 @contextmanager
@@ -79,12 +94,28 @@ def track(node: str, client=None):
             entry.prompt_tokens = sum(c.prompt_tokens for c in new)
             entry.completion_tokens = sum(c.completion_tokens for c in new)
             entry.attempts = max((c.attempts for c in new), default=1)
-        if _current is not None:
-            _current.nodes.append(entry)
+        run = _current.get()
+        if run is not None:
+            run.nodes.append(entry)
 
 
-def load_trace(claim_id: str) -> RunTrace | None:
+def load_trace(claim_id: str, tenant: str | None = None) -> RunTrace | None:
+    """The stored trace, or None -- including when it belongs to someone else.
+
+    A trace names the claim, its node timings and its token spend. Filed on disk by
+    claim id alone, it was readable by anyone who could guess an id, which in a
+    multi-tenant deployment is a leak the tenant-scoped database would not have
+    allowed. Returning None rather than raising keeps a foreign trace and a missing
+    one indistinguishable from outside.
+
+    Filenames stay flat rather than moving under a per-tenant directory: the traces
+    committed to data/traces are part of the demo, and a layout change would strand
+    them for the sake of a check the field does just as well.
+    """
     path = TRACE_DIR / f"{claim_id}.json"
     if not path.is_file():
         return None
-    return RunTrace.model_validate_json(path.read_text(encoding="utf-8"))
+    run = RunTrace.model_validate_json(path.read_text(encoding="utf-8"))
+    if tenant is not None and run.tenant != tenant:
+        return None
+    return run

@@ -1,0 +1,35 @@
+<!doctype html>
+<!--
+  ClaimIQ product UI.
+
+  Served statically by the FastAPI app that also serves the engine, so there is one
+  process, one port and no build step. Views are ES modules loaded natively by the
+  browser; the repository has no JS toolchain and adding one would mean node_modules
+  and a bundler in front of a few thousand lines of DOM.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClaimIQ — check a claim</title>
+<meta name="description" content="Audit an Indian hospital claim packet before it goes to the TPA.">
+<meta name="theme-color" content="#0b0c0f">
+<!-- The product screen holds claim data; keep it out of search indexes. -->
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<noscript>
+  <div style="padding:32px;max-width:60ch">
+    <h1>JavaScript is required</h1>
+    <p>The ClaimIQ product screen is a client-rendered application. The engine itself
+    is a plain HTTP API and works without a browser — see <a href="/docs">/docs</a>.</p>
+  </div>
+</noscript>
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

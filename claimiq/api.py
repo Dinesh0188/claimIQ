@@ -2,21 +2,36 @@
 
 The Streamlit UI talks to this over HTTP rather than importing the engine, so the
 API is a real boundary and not decoration.
+
+Two route families, and the split is a promise rather than tidying:
+
+  /api/*  the surface the bundled UI calls. Unversioned, because the UI ships in this
+          repo and the two change together.
+  /v1/*   the surface an integrator gets -- batch, ledger, provenance. Versioned
+          because somebody else's code depends on it, which is the entire difference.
+
+Cross-cutting concerns (correlation id, authentication, rate limit, metrics, access
+log) are applied by middleware to both, rather than repeated per route. A security
+control that must be remembered on every new endpoint is one that will eventually be
+forgotten on one.
 """
 
 from __future__ import annotations
 
 import logging
 import tempfile
+import time
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from openai import APIError
+from pydantic import BaseModel, Field
 
-from claimiq import analytics, providers, trace
+from claimiq import analytics, jobs, ledger, observability, providers, store, tenancy, trace
 from claimiq.config import ROOT, settings
 from claimiq.graph import audit
 from claimiq.llm import LLMUnavailable, try_client
@@ -29,8 +44,9 @@ from claimiq.nodes.extract import (
     extract_policy_terms,
     room_stay_from_items,
 )
+from claimiq.observability import METRICS, log
 from claimiq.report import build_report
-from claimiq.retrieval.corpus import corpus_version, load_corpus
+from claimiq.retrieval.corpus import corpus_version, load_corpus, sources, stale_sources
 from claimiq.retrieval.search import get_index
 from claimiq.state import AuditResult, ClaimPacket
 from claimiq.tools.waterfall import PROFILES, simulate_room_downgrade
@@ -38,7 +54,149 @@ from claimiq.tools.waterfall import PROFILES, simulate_room_downgrade
 SAMPLES = ROOT / "data" / "samples"
 WEB = ROOT / "web"
 
-app = FastAPI(title="ClaimIQ", version="1.0.0")
+app = FastAPI(title="ClaimIQ", version="1.1.0")
+
+observability.configure_logging(settings().json_logs)
+
+# Same-origin by default: the SPA is served from this very app, so no CORS header is
+# the correct answer and a wildcard would be a gift to anyone hosting a page that
+# wants a hospital's claim data. Configured explicitly when someone genuinely embeds
+# the API from another origin.
+if settings().cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings().cors_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Request-ID"],
+        expose_headers=["X-Request-ID"],
+    )
+
+
+# --- cross-cutting middleware ---------------------------------------------
+
+
+# Reachable without a key even when authentication is on. `/health` and `/metrics` are
+# what a load balancer and a scraper poll, and putting a credential on a liveness probe
+# is how a deployment ends up with the same key in five unrelated config files.
+# `/health` is already scrubbed of anything sensitive; `/metrics` carries counts only.
+PUBLIC_PATHS = {"/health", "/metrics", "/docs", "/redoc", "/openapi.json"}
+
+
+def _is_public(path: str) -> bool:
+    # The SPA and its assets are public in the same sense a login page is: the bundle
+    # is not the data, and gating it means the browser cannot render the screen that
+    # would collect the credential.
+    return path in PUBLIC_PATHS or not path.startswith(("/api/", "/v1/"))
+
+
+@app.middleware("http")
+async def correlate_and_meter(request: Request, call_next):
+    """One id per request, one metric per request, one log line per request.
+
+    Runs before authentication so that a rejected request is still logged and still
+    counted. An auth failure that leaves no trace is precisely the one worth seeing.
+    """
+    rid = request.headers.get("X-Request-ID") or observability.new_request_id()
+    observability.request_id.set(rid)
+    observability.principal_label.set("-")
+
+    started = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        METRICS.inc("claimiq_requests_total", {"path": _route(request), "status": "500"})
+        raise
+
+    elapsed = time.perf_counter() - started
+    route = _route(request)
+    METRICS.inc("claimiq_requests_total", {"path": route, "status": str(response.status_code)})
+    METRICS.observe("claimiq_request_duration_seconds", elapsed, {"path": route})
+
+    response.headers["X-Request-ID"] = rid
+    if not _is_public(request.url.path):
+        log(
+            "http.request",
+            method=request.method,
+            path=request.url.path,
+            status=response.status_code,
+            ms=int(elapsed * 1000),
+        )
+    return response
+
+
+def _route(request: Request) -> str:
+    """The route template, not the concrete path.
+
+    `/api/claims/{claim_id}` rather than `/api/claims/SYNTH-0042`. Labelling metrics
+    with the concrete path gives one time series per claim, which is the classic way
+    to make a metrics backend fall over -- and it puts claim identifiers into a store
+    that is usually far less protected than the database they came from.
+    """
+    route = request.scope.get("route")
+    return getattr(route, "path", None) or "unmatched"
+
+
+@app.middleware("http")
+async def authenticate(request: Request, call_next):
+    """Resolve the caller, or reject. No-op when no keys are configured."""
+    if _is_public(request.url.path):
+        return await call_next(request)
+
+    presented = request.headers.get("X-API-Key") or _bearer(request)
+    principal = tenancy.resolve(presented)
+    if principal is None:
+        METRICS.inc("claimiq_auth_failures_total")
+        log("auth.rejected", path=request.url.path, had_key=bool(presented))
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "a valid API key is required (X-API-Key or Authorization: Bearer)"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    observability.principal_label.set(principal.label)
+    request.state.principal = principal
+
+    allowed, remaining, retry_after = tenancy.limiter().check(principal.label)
+    if not allowed:
+        METRICS.inc("claimiq_rate_limited_total", {"tenant": principal.tenant})
+        return JSONResponse(
+            status_code=429,
+            content={"detail": f"rate limit of {settings().rate_limit_per_minute}/min exceeded"},
+            headers={"Retry-After": str(int(retry_after) + 1)},
+        )
+
+    response = await call_next(request)
+    if remaining >= 0:
+        response.headers["X-RateLimit-Remaining"] = str(remaining)
+    return response
+
+
+def _bearer(request: Request) -> str | None:
+    header = request.headers.get("Authorization", "")
+    return header[7:].strip() if header.lower().startswith("bearer ") else None
+
+
+def caller(request: Request) -> tenancy.Principal:
+    """The resolved principal. Anonymous when authentication is not configured."""
+    return getattr(request.state, "principal", tenancy.ANONYMOUS)
+
+
+def require(scope: str):
+    """Dependency factory: 403 unless the caller holds `scope`.
+
+    Authentication is handled by middleware and authorisation here, because the two
+    answer different questions and conflating them is how an endpoint ends up
+    authenticated but unauthorised -- every valid key able to do everything.
+    """
+
+    def dependency(request: Request) -> tenancy.Principal:
+        principal = caller(request)
+        if not principal.can(scope):
+            raise HTTPException(403, f"this key does not hold the {scope!r} scope")
+        return principal
+
+    return dependency
 
 
 @app.exception_handler(Exception)
@@ -53,7 +211,14 @@ async def unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
     logging.getLogger("claimiq").exception("unhandled error on %s", request.url.path)
     return JSONResponse(
         status_code=500,
-        content={"detail": f"{type(exc).__name__}: {exc}", "path": request.url.path},
+        content={
+            "detail": f"{type(exc).__name__}: {exc}",
+            "path": request.url.path,
+            # The one string a user can quote that finds every log line for this
+            # failure. Without it a bug report is "it broke this afternoon".
+            "request_id": observability.request_id.get(),
+        },
+        headers={"X-Request-ID": observability.request_id.get()},
     )
 
 
@@ -64,6 +229,11 @@ def health() -> dict:
     active = providers.active_provider()
     return {
         "status": "ok",
+        # Posture, stated rather than assumed. An operator who believes authentication
+        # is on when it is not has a worse problem than one who knows it is off, so
+        # this is unauthenticated on purpose -- it names no keys and no tenant data.
+        "security": tenancy.describe(),
+        "ledger_enabled": settings().ledger_enabled,
         "ai_enabled": settings().ai_enabled,
         "key_present": active.usable,
         "provider": active.name,
@@ -83,7 +253,7 @@ def list_providers() -> list[dict]:
 
 
 @app.post("/api/providers/{name}")
-def switch_provider(name: str) -> dict:
+def switch_provider(name: str, _: tenancy.Principal = Depends(require("admin"))) -> dict:
     """Switch provider at runtime -- useful when one hits its daily quota."""
     try:
         provider = providers.set_active(name)
@@ -115,13 +285,32 @@ def get_sample(name: str) -> ClaimPacket:
 
 
 @app.post("/api/audit")
-def run_audit(packet: ClaimPacket) -> AuditResult:
-    return audit(packet)
+def run_audit(
+    packet: ClaimPacket, principal: tenancy.Principal = Depends(require("audit"))
+) -> AuditResult:
+    result = audit(
+        packet,
+        tenant=principal.tenant,
+        key_id=principal.key_id,
+        request_id=observability.request_id.get(),
+    )
+    METRICS.inc("claimiq_audits_total", {"result": result.verdict, "mode": "single"})
+    return result
 
 
 @app.post("/api/simulate-room")
-def simulate(packet: ClaimPacket, profile: str = "typical") -> dict:
-    result = audit(packet, persist=False)
+def simulate(
+    packet: ClaimPacket,
+    profile: str = "typical",
+    principal: tenancy.Principal = Depends(require("audit")),
+) -> dict:
+    result = audit(
+        packet,
+        persist=False,
+        tenant=principal.tenant,
+        key_id=principal.key_id,
+        request_id=observability.request_id.get(),
+    )
     outcome = simulate_room_downgrade(packet, result.findings, profile)
     if outcome is None:
         return {"applicable": False}
@@ -141,9 +330,25 @@ METHOD_LABEL = {
 }
 
 
+async def _read_capped(file: UploadFile, limit: int) -> bytes:
+    """Read the upload in chunks, refusing as soon as it exceeds `limit`."""
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(1024 * 1024):
+        total += len(chunk)
+        if total > limit:
+            raise HTTPException(413, f"file is larger than the {limit // (1024 * 1024)} MB limit")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 @app.post("/api/extract")
 @app.post("/api/extract-pdf")  # legacy alias
-async def extract(file: UploadFile = File(...)) -> dict:
+async def extract(
+    request: Request,
+    file: UploadFile = File(...),
+    _: tenancy.Principal = Depends(require("audit")),
+) -> dict:
     """Turn an uploaded bill into structured line items.
 
     Everything that can fail lives inside the try, including the upload read and the
@@ -166,9 +371,20 @@ async def extract(file: UploadFile = File(...)) -> dict:
             f"Accepted: {', '.join(sorted(ACCEPTED_SUFFIXES))}",
         )
 
+    # Declared size first, actual size second. Content-Length is a claim rather than a
+    # fact -- it can be absent on a chunked upload and it can lie -- so it is used only
+    # as a cheap early reject, and the real limit is enforced on the bytes as they
+    # arrive. Reading first and checking after would mean a 2 GB upload is already
+    # resident in this worker's memory by the time it is refused, which is a one-line
+    # denial of service against a synchronous OCR endpoint.
+    limit = settings().max_upload_bytes
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > limit:
+        raise HTTPException(413, f"file is larger than the {limit // (1024 * 1024)} MB limit")
+
     tmp_path: Path | None = None
     try:
-        payload = await file.read()
+        payload = await _read_capped(file, limit)
         if not payload:
             raise HTTPException(400, "the uploaded file is empty")
 
@@ -274,8 +490,18 @@ async def extract(file: UploadFile = File(...)) -> dict:
 
 
 @app.post("/api/report")
-def report(packet: ClaimPacket, profile: str = "typical") -> Response:
-    result = audit(packet, persist=False)
+def report(
+    packet: ClaimPacket,
+    profile: str = "typical",
+    principal: tenancy.Principal = Depends(require("audit")),
+) -> Response:
+    result = audit(
+        packet,
+        persist=False,
+        tenant=principal.tenant,
+        key_id=principal.key_id,
+        request_id=observability.request_id.get(),
+    )
     return Response(
         content=build_report(result, profile),
         media_type="application/pdf",
@@ -295,19 +521,48 @@ def get_trace(claim_id: str) -> dict:
 
 
 @app.get("/api/rules")
-def rules() -> dict:
+def rules(full: bool = False) -> dict:
+    """The rule catalog: totals always, every rule when `full=1`.
+
+    `full` exists so the UI can offer a browsable, searchable catalog. A rule source
+    nobody can read is not inspectable whatever the README says, and 104 chunks is
+    small enough to send in one response and filter in the browser -- a round trip per
+    keystroke would be slower and no more correct.
+
+    Freshness comes from the source registry rather than a hardcoded string. The old
+    `verified_on: None` was a literal that no code path could ever set, so the field
+    said "unverified" even after somebody had verified it.
+    """
     chunks = load_corpus()
     counts: dict[str, int] = {}
     for chunk in chunks:
         key = chunk.list_name or "POLICY_WORDING"
         counts[key] = counts.get(key, 0) + 1
-    return {
+
+    stale = stale_sources()
+    registry = sources()
+    verified = [
+        s.verified_on.isoformat()
+        for s in registry.values()
+        if s.verified_on is not None
+    ]
+
+    payload = {
         "corpus_version": corpus_version(),
-        "verified_on": None,
-        "note": "Unverified snapshot. Not checked against current IRDAI circulars.",
+        # The newest verification date across sources in use, or None when no source
+        # has ever been checked -- which is the current state and the product says so.
+        "verified_on": max(verified) if verified else None,
+        "note": " ".join(
+            f"{registry[sid].title}: {reason}" for sid, reason in stale.items()
+        ) or "All rule sources have been verified against their issuing publication.",
+        "stale_sources": stale,
         "counts": counts,
         "total": len(chunks),
+        "chunk_ids": [c.chunk_id for c in chunks],
     }
+    if full:
+        payload["rules"] = [c.model_dump(mode="json") for c in chunks]
+    return payload
 
 
 @app.get("/api/rules/{chunk_id}")
@@ -318,33 +573,42 @@ def rule(chunk_id: str) -> dict:
     raise HTTPException(404, f"no chunk {chunk_id!r}")
 
 
+# Every analytics route derives its tenant from the principal, never from a query
+# parameter. A `?tenant=` argument would be an access-control decision handed to the
+# caller, which is the same class of mistake as trusting a client-supplied user id.
 @app.get("/api/analytics/summary")
-def analytics_summary() -> dict:
-    return analytics.portfolio_summary()
+def analytics_summary(principal: tenancy.Principal = Depends(require("read"))) -> dict:
+    return analytics.portfolio_summary(_scope(principal))
 
 
 @app.get("/api/analytics/leakage")
-def analytics_leakage() -> list[dict]:
-    return analytics.leakage_by_cause().to_dict(orient="records")
+def analytics_leakage(principal: tenancy.Principal = Depends(require("read"))) -> list[dict]:
+    return analytics.leakage_by_cause(_scope(principal)).to_dict(orient="records")
 
 
 @app.get("/api/analytics/top-items")
-def analytics_top_items(limit: int = 10) -> list[dict]:
-    return analytics.top_leaking_items(limit).to_dict(orient="records")
+def analytics_top_items(
+    limit: int = 10, principal: tenancy.Principal = Depends(require("read"))
+) -> list[dict]:
+    return analytics.top_leaking_items(limit, _scope(principal)).to_dict(orient="records")
 
 
 @app.get("/api/analytics/missing-docs")
-def analytics_missing_docs(limit: int = 10) -> list[dict]:
-    return analytics.top_missing_documents(limit).to_dict(orient="records")
+def analytics_missing_docs(
+    limit: int = 10, principal: tenancy.Principal = Depends(require("read"))
+) -> list[dict]:
+    return analytics.top_missing_documents(limit, _scope(principal)).to_dict(orient="records")
 
 
 @app.post("/api/analytics/ask")
-def analytics_ask(payload: dict) -> dict:
+def analytics_ask(
+    payload: dict, principal: tenancy.Principal = Depends(require("read"))
+) -> dict:
     question = (payload or {}).get("question", "").strip()
     if not question:
         raise HTTPException(400, "question is required")
     try:
-        sql, frame, explanation = analytics.ask(question)
+        sql, frame, explanation = analytics.ask(question, tenant=_scope(principal))
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(422, str(exc)) from exc
     return {
@@ -353,6 +617,157 @@ def analytics_ask(payload: dict) -> dict:
         "columns": list(frame.columns),
         "rows": frame.to_dict(orient="records"),
     }
+
+
+@app.get("/api/claims")
+def list_claims(
+    q: str = "",
+    month: str = "",
+    limit: int = 50,
+    offset: int = 0,
+    principal: tenancy.Principal = Depends(require("read")),
+) -> dict:
+    """Audited claims, newest first. Search by claim id or diagnosis.
+
+    The analytics endpoints only ever returned aggregates, so a user could see that
+    their portfolio leaked money but could not open the claim it leaked on.
+    """
+    scope = _scope(principal)
+    rows, total = store.list_claims(
+        query=q, month=month, limit=limit, offset=offset, tenant=scope
+    )
+    return {"claims": rows, "total": total, "limit": limit, "offset": offset,
+            "months": store.months(scope)}
+
+
+@app.get("/api/claims/{claim_id}")
+def get_claim(
+    claim_id: str, principal: tenancy.Principal = Depends(require("read"))
+) -> dict:
+    """One stored audit, enough to render it again without re-running the engine."""
+    scope = _scope(principal)
+    rows, _ = store.list_claims(query=claim_id, limit=200, tenant=scope)
+    claim = next((r for r in rows if r["claim_id"] == claim_id), None)
+    if claim is None:
+        # 404 whether it does not exist or belongs to another tenant. Distinguishing
+        # them would confirm that a given claim id exists somewhere in the system.
+        raise HTTPException(404, f"no stored audit for {claim_id!r}")
+    return {
+        **claim,
+        "findings": store.claim_findings(claim_id, scope),
+        "document_gaps": store.claim_gaps(claim_id, scope),
+    }
+
+
+# --- /v1: the integrator surface -------------------------------------------
+
+
+class BatchRequest(BaseModel):
+    claims: list[ClaimPacket] = Field(min_length=1)
+
+
+@app.post("/v1/batches", status_code=202)
+def submit_batch(
+    body: BatchRequest, principal: tenancy.Principal = Depends(require("audit"))
+) -> dict:
+    """Queue many claims and return immediately.
+
+    202 rather than 200, and it is not pedantry: the response describes work that has
+    been accepted, not work that has been done, and a client that treats those the same
+    will read `settlement: 0` off an empty job and believe it.
+    """
+    cap = settings().max_batch_size
+    if len(body.claims) > cap:
+        raise HTTPException(413, f"a batch may carry at most {cap} claims; got {len(body.claims)}")
+
+    # Duplicate ids inside one batch would produce two ledger entries and one surviving
+    # database row, so the portfolio and the ledger would disagree about what happened.
+    # Cheaper to refuse than to explain.
+    ids = [c.claim_id for c in body.claims]
+    if len(set(ids)) != len(ids):
+        duplicates = sorted({i for i in ids if ids.count(i) > 1})
+        raise HTTPException(422, f"duplicate claim_id in batch: {', '.join(duplicates[:10])}")
+
+    job = jobs.registry().submit(body.claims, principal.tenant, principal.key_id)
+    log("batch.submitted", job_id=job.job_id, claims=len(body.claims), tenant=principal.tenant)
+    return job.summary(include_outcomes=False) | {"poll": f"/v1/batches/{job.job_id}"}
+
+
+@app.get("/v1/batches")
+def list_batches(
+    limit: int = 50, principal: tenancy.Principal = Depends(require("read"))
+) -> list[dict]:
+    return jobs.registry().list(_scope(principal), limit)
+
+
+@app.get("/v1/batches/{job_id}")
+def get_batch(job_id: str, principal: tenancy.Principal = Depends(require("read"))) -> dict:
+    job = jobs.registry().get(job_id, _scope(principal))
+    if job is None:
+        raise HTTPException(404, f"no job {job_id!r}")
+    return job.summary() | {"totals": job.totals()}
+
+
+@app.post("/v1/batches/{job_id}/cancel")
+def cancel_batch(job_id: str, principal: tenancy.Principal = Depends(require("audit"))) -> dict:
+    """Stop after the in-flight claim. Already-audited claims keep their results --
+    a cancel that discarded completed work would make it useless for the case it
+    exists for, which is a batch someone submitted against the wrong month."""
+    if not jobs.registry().cancel(job_id, _scope(principal)):
+        raise HTTPException(404, f"no cancellable job {job_id!r}")
+    return {"job_id": job_id, "state": "cancelling"}
+
+
+@app.get("/v1/ledger")
+def read_ledger(
+    claim_id: str = "", limit: int = 100, principal: tenancy.Principal = Depends(require("read"))
+) -> dict:
+    return {
+        "entries": ledger.history(claim_id or None, _scope(principal), min(limit, 500)),
+        "head": ledger.head()[1],
+    }
+
+
+@app.get("/v1/ledger/verify")
+def verify_ledger(_: tenancy.Principal = Depends(require("admin"))) -> dict:
+    """Walk the hash chain and report the first entry that does not hold up.
+
+    Deliberately behind `admin` and deliberately not tenant-scoped: the chain covers
+    every tenant, so verifying a slice of it would verify nothing. What a tenant gets
+    is their own entries plus the head hash, which they can pin externally.
+    """
+    status = ledger.verify_chain()
+    return {
+        "ok": status.ok,
+        "entries": status.entries,
+        "head": status.head,
+        "broken_at": status.broken_at,
+        "reason": status.reason,
+    }
+
+
+@app.get("/metrics")
+def metrics() -> PlainTextResponse:
+    """Prometheus text exposition. Public, like /health -- it carries counts, not data."""
+    METRICS.gauge("claimiq_batch_queue_depth", jobs.registry().active_count())
+    return PlainTextResponse(METRICS.exposition(), media_type="text/plain; version=0.0.4")
+
+
+@app.get("/v1/metrics.json")
+def metrics_json(_: tenancy.Principal = Depends(require("read"))) -> dict:
+    """The same numbers as JSON, for the UI's operations panel."""
+    return METRICS.snapshot()
+
+
+def _scope(principal: tenancy.Principal) -> str | None:
+    """The tenant to filter by, or None when there is only one.
+
+    Returning None for the anonymous local principal is what keeps the demo showing
+    its own history: with authentication off every audit is recorded under tenant
+    'local', and filtering on it would work but would silently hide anything written
+    before a key was configured.
+    """
+    return None if principal.anonymous else principal.tenant
 
 
 # --- static frontend -------------------------------------------------------

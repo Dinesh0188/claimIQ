@@ -6,4 +6,12 @@ __pycache__/
 providers.json
 data/generated/
 data/claimiq.db
+# The audit ledger is append-only and per-deployment. Committing it would mean every
+# clone inherits somebody else's chain, and the head hash -- the thing that makes the
+# chain worth anything -- would be meaningless.
+data/ledger.db
+data/ledger.db-wal
+data/ledger.db-shm
+data/claimiq.db-wal
+data/claimiq.db-shm
 .pytest_cache/

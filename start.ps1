@@ -1,11 +1,23 @@
-# Starts the ClaimIQ API and UI together.
+# Starts ClaimIQ.
 #
-#   .\start.ps1
+#   .\start.ps1              product UI + API on one port
+#   .\start.ps1 -Streamlit   also start the legacy Streamlit UI on :8501
 #
-# API  -> http://127.0.0.1:8000/docs
-# UI   -> http://localhost:8501
+# Landing   -> http://127.0.0.1:8000/
+# Product   -> http://127.0.0.1:8000/app.html
+# API docs  -> http://127.0.0.1:8000/docs
 #
-# Ctrl+C stops both.
+# One process by default. The product UI is a static SPA served by the same FastAPI
+# app that runs the engine, so there is no second server to keep alive, no second port
+# to remember and no build step. The Streamlit UI it replaced is still in ui/ and
+# still works; -Streamlit runs it alongside for comparison.
+#
+# Ctrl+C stops everything.
+
+param(
+    [switch]$Streamlit,
+    [int]$Port = 8000
+)
 
 $root = $PSScriptRoot
 $python = Join-Path $root ".venv\Scripts\python.exe"
@@ -18,49 +30,47 @@ if (-not (Test-Path $python)) {
 }
 
 # Fail early with a clear message rather than letting uvicorn die on a bound port.
-$busy = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue
+$busy = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
 if ($busy) {
-    Write-Host "Port 8000 is already in use. Stop the other process, or run:" -ForegroundColor Yellow
+    Write-Host "Port $Port is already in use. Stop the other process, or run:" -ForegroundColor Yellow
     Write-Host '  Get-Process python | Where-Object { $_.Path -like "*health insurance*" } | Stop-Process -Force'
     exit 1
 }
 
-Write-Host "Starting API  http://127.0.0.1:8000 ..." -ForegroundColor Cyan
-$api = Start-Process -FilePath $python `
-    -ArgumentList "-m", "uvicorn", "claimiq.api:app", "--host", "127.0.0.1", "--port", "8000" `
-    -WorkingDirectory $root -PassThru -WindowStyle Hidden
-
-# Wait for the API before the UI, so the first page load is not an error banner.
-$ready = $false
-foreach ($i in 1..40) {
-    try {
-        Invoke-RestMethod "http://127.0.0.1:8000/health" -TimeoutSec 2 | Out-Null
-        $ready = $true
-        break
-    } catch { Start-Sleep -Milliseconds 750 }
+$streamlitProc = $null
+if ($Streamlit) {
+    Write-Host "Starting legacy Streamlit UI  http://localhost:8501 ..." -ForegroundColor DarkGray
+    $streamlitProc = Start-Process -FilePath $python `
+        -ArgumentList "-m", "streamlit", "run", (Join-Path $root "ui\app.py"), "--server.headless", "true" `
+        -WorkingDirectory $root -PassThru -WindowStyle Hidden
 }
 
-if ($ready) {
-    Write-Host "API ready." -ForegroundColor Green
-} else {
-    Write-Host "API did not respond in 30s - the UI will start it in-process instead." -ForegroundColor Yellow
-}
-
-Write-Host "Starting UI   http://localhost:8501 ..." -ForegroundColor Cyan
-Write-Host "Ctrl+C to stop both." -ForegroundColor DarkGray
-
-# Streamlit runs headless (see .streamlit/config.toml), so open the browser here.
+# Open the browser once the server actually answers, so the first paint is the app
+# rather than a connection error the user has to reload past.
 Start-Job -ScriptBlock {
-    Start-Sleep -Seconds 4
-    Start-Process "http://localhost:8501"
-} | Out-Null
+    param($p)
+    foreach ($i in 1..60) {
+        try { Invoke-RestMethod "http://127.0.0.1:$p/health" -TimeoutSec 2 | Out-Null; break }
+        catch { Start-Sleep -Milliseconds 500 }
+    }
+    Start-Process "http://127.0.0.1:$p/app.html"
+} -ArgumentList $Port | Out-Null
+
+Write-Host ""
+Write-Host "  Product   http://127.0.0.1:$Port/app.html" -ForegroundColor Cyan
+Write-Host "  Landing   http://127.0.0.1:$Port/" -ForegroundColor DarkGray
+Write-Host "  API docs  http://127.0.0.1:$Port/docs" -ForegroundColor DarkGray
+Write-Host ""
+Write-Host "  Ctrl+C to stop." -ForegroundColor DarkGray
+Write-Host ""
 
 try {
-    & $python -m streamlit run (Join-Path $root "ui\app.py")
+    & $python -m uvicorn claimiq.api:app --host 127.0.0.1 --port $Port
 }
 finally {
-    if ($api -and -not $api.HasExited) {
-        Write-Host "Stopping API ..." -ForegroundColor DarkGray
-        Stop-Process -Id $api.Id -Force -ErrorAction SilentlyContinue
+    if ($streamlitProc -and -not $streamlitProc.HasExited) {
+        Write-Host "Stopping Streamlit ..." -ForegroundColor DarkGray
+        Stop-Process -Id $streamlitProc.Id -Force -ErrorAction SilentlyContinue
     }
+    Get-Job | Remove-Job -Force -ErrorAction SilentlyContinue
 }
