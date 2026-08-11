@@ -1,0 +1,62 @@
+# Render Blueprint for the ClaimIQ backend.
+#
+# Deploy: https://render.com -> New -> Blueprint -> point at this repo. Render reads
+# this file and provisions the service below; nothing else needs to be clicked
+# through by hand except the secret values marked sync: false.
+#
+# The frontend is NOT deployed here -- it goes to Vercel separately (see DEPLOY.md)
+# and talks to this service over HTTPS via NEXT_PUBLIC_API_URL.
+
+services:
+  - type: web
+    name: claimiq-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter
+    region: singapore
+    healthCheckPath: /health
+    envVars:
+      # --- LLM provider -- secrets, filled in via the Render dashboard, never
+      # committed. sync: false means "this variable exists, go set it yourself".
+      - key: LLM_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        value: openai/gpt-oss-120b
+      - key: VISION_MODEL
+        value: qwen/qwen3.6-27b
+      - key: AI_ENABLED
+        value: "true"
+
+      # --- deployment posture ---
+      # CORS: the exact production frontend origin. Update this to your real Vercel
+      # domain after the first frontend deploy, then add it here.
+      - key: CLAIMIQ_CORS_ORIGINS
+        sync: false
+      # Vercel preview deployments get a new subdomain per branch/PR -- this regex
+      # covers all of them without editing an env var on every PR. Replace
+      # <your-project> with your actual Vercel project slug.
+      - key: CLAIMIQ_CORS_ORIGIN_REGEX
+        value: "https://<your-project>.*\\.vercel\\.app"
+      # Empty = authentication off (fine for a demo/portfolio deployment). Set
+      # key:tenant:scopes entries here before pointing this at real claim data.
+      - key: CLAIMIQ_API_KEYS
+        sync: false
+      - key: CLAIMIQ_RATE_LIMIT_PER_MINUTE
+        value: "120"
+      - key: CLAIMIQ_MAX_UPLOAD_BYTES
+        value: "26214400"
+      - key: CLAIMIQ_LEDGER
+        value: "true"
+      - key: CLAIMIQ_JSON_LOGS
+        value: "true"
+
+    # Render's persistent disk. Without this, every deploy or restart resets
+    # data/claimiq.db and data/ledger.db to the image's baked-in snapshot -- fine for
+    # a demo, but real audit history needs to survive a redeploy.
+    disk:
+      name: claimiq-data
+      mountPath: /app/data
+      sizeGB: 1

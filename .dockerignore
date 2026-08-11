@@ -1,0 +1,37 @@
+# Keep the build context small and never let a secret into a layer.
+
+.venv/
+.git/
+.pytest_cache/
+.ruff_cache/
+.streamlit/
+.claude/
+frontend/
+ui/
+scripts/
+tests/
+docs/
+node_modules/
+
+# Documentation -- not needed at runtime
+*.md
+
+# Secrets. The image reads config from the platform's environment variables, never
+# from a baked-in .env.
+.env
+.env.*
+!.env.example
+providers.json
+
+# Generated / local-only data that should not ship in the image
+data/generated/
+data/ledger.db
+data/ledger.db-wal
+data/ledger.db-shm
+data/claimiq.db-wal
+data/claimiq.db-shm
+
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store

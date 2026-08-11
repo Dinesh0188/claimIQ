@@ -52,6 +52,13 @@ class Settings:
     # Allowed browser origins for the SPA. Empty means same-origin only, i.e. no CORS
     # headers at all, which is the correct default for a bundled frontend.
     cors_origins_raw: str = ""
+    # A single regex matched against the request Origin header, in addition to the
+    # exact list above. Exists for Vercel: every preview deployment gets its own
+    # subdomain (e.g. claimiq-git-fix-123.vercel.app), so a fixed list would mean
+    # editing an env var on every PR. The production domain still belongs in the
+    # exact list -- this is deliberately the looser, secondary check, not a
+    # replacement for it.
+    cors_origin_regex: str = ""
     # Hard ceiling on an upload, enforced before the bytes are buffered. 25 MB fits a
     # 40-page scanned bill at 300 dpi with room to spare.
     max_upload_bytes: int = 25 * 1024 * 1024
@@ -96,6 +103,7 @@ def settings() -> Settings:
         ai_enabled=os.getenv("AI_ENABLED", "true").lower() == "true",
         api_keys_raw=os.getenv("CLAIMIQ_API_KEYS", ""),
         cors_origins_raw=os.getenv("CLAIMIQ_CORS_ORIGINS", ""),
+        cors_origin_regex=os.getenv("CLAIMIQ_CORS_ORIGIN_REGEX", ""),
         max_upload_bytes=_int("CLAIMIQ_MAX_UPLOAD_BYTES", 25 * 1024 * 1024),
         rate_limit_per_minute=_int("CLAIMIQ_RATE_LIMIT_PER_MINUTE", 120),
         max_batch_size=_int("CLAIMIQ_MAX_BATCH_SIZE", 500),

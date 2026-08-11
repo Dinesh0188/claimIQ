@@ -40,11 +40,32 @@ python scripts/index_corpus.py
 python scripts/gen_samples.py 300
 python scripts/gen_bill_pdf.py
 python scripts/seed_db.py
-.\start.ps1
+.venv\Scripts\python.exe -m uvicorn claimiq.api:app --host 127.0.0.1 --port 8000
 ```
 
-API on `:8000`, UI on `:8501`. **It runs with no key at all** — set `AI_ENABLED=false`
-and every screen still works on the deterministic engine.
+That starts the API on `:8000` — confirm with `curl http://127.0.0.1:8000/health`.
+**It runs with no key at all** — set `AI_ENABLED=false` and every screen still works on
+the deterministic engine.
+
+The primary UI is the React/Next.js app in `frontend/`, run separately so it hot-reloads
+on its own:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000`. Add `http://localhost:3000` to `CLAIMIQ_CORS_ORIGINS` in
+`.env` if the sidebar shows a connection error. Full deploy instructions (Vercel + Render):
+**[DEPLOY.md](DEPLOY.md)**.
+
+Two other UIs ship in this repo and still work, kept for specific use cases rather than
+as the primary demo: `.\start.ps1` boots the API plus a bundled static site
+(`web/`, landing at `/`, product UI at `/app.html`) on one port — no `npm install`
+needed, good for a one-container demo. `.\start.ps1 -Streamlit` also runs the original
+Streamlit analyst UI on `:8501`, kept for side-by-side comparison; see
+[DEPLOYMENT.md](DEPLOYMENT.md) for that path.
 
 ---
 
@@ -164,12 +185,21 @@ Full write-up, stack rationale, challenges and interview prep:
 
 ## Screens
 
-| Screen | What it shows |
-|---|---|
-| **Audit** | Waterfall from gross bill to settlement, line-item verdicts with citations, missing documents, room-downgrade simulator, PDF export |
-| **Trace** | Each node's latency, tokens, cache hits — and the repair loop firing |
-| **Dashboard** | Portfolio leakage: preventable loss by cause, top 10 billing mistakes, most-missed documents |
-| **Ask** | Plain-English questions → validated read-only SQL |
+The React frontend (`frontend/`, `http://localhost:3000`) is the primary UI:
+
+| Screen | Route | What it shows |
+|---|---|---|
+| **Check a claim** | `/` | Upload or pick a sample, verdict banner, waterfall from gross bill to settlement, line-item findings with citations, missing documents, narrative + action list, PDF export |
+| **Claims** | `/claims` | Searchable, paginated history of every audited claim |
+| **Claim detail** | `/claims/{id}` | The persisted audit for one claim — figures, findings, document gaps |
+| **Leakage Dashboard** | `/dashboard` | Portfolio leakage: preventable loss by cause, top 10 billing mistakes, most-missed documents |
+| **Rule catalog** | `/rules` | All 104 corpus chunks, searchable, with the "unverified snapshot" banner |
+
+The legacy Streamlit UI (`.\start.ps1 -Streamlit`, `:8501`) additionally has **Trace**
+(each node's latency, tokens, cache hits, and the repair loop firing) and **Ask**
+(plain-English questions → validated read-only SQL over the portfolio) — both still
+work against the same API (`GET /api/trace/{claim_id}`, `POST /api/analytics/ask`), the
+React frontend just doesn't have screens for them yet.
 
 ---
 
@@ -227,8 +257,10 @@ Stated plainly, because this touches medical billing:
 python -m pytest -q
 ```
 
-59 tests, ~12s, no API key needed — the suite forces `AI_ENABLED=false` so it is
-offline and deterministic.
+230 tests, ~15s, no API key needed — the suite forces `AI_ENABLED=false` so it is
+offline and deterministic. (The number has grown since the original 59 as the
+operational layer — idempotency, retention, webhooks, ledger, batches — was added;
+see [ENTERPRISE.md](ENTERPRISE.md).)
 
 ## Documentation
 
@@ -238,5 +270,8 @@ offline and deterministic.
 | [DECISIONS.md](DECISIONS.md) | 14 decision records — problem, alternatives, trade-off, outcome |
 | [EVALUATION.md](EVALUATION.md) | methodology, datasets, failure analysis, threats to validity |
 | [DOCUMENTATION.md](DOCUMENTATION.md) | project overview, challenges log, 20 interview Q&As |
-| [DEPLOYMENT.md](DEPLOYMENT.md) | local validation then public deploy |
+| [ENTERPRISE.md](ENTERPRISE.md) | the operational layer — auth, ledger, batches, retention, what's still missing |
+| [DEPLOY.md](DEPLOY.md) | **current**: React frontend on Vercel + FastAPI backend on Render |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | legacy: single-process Streamlit deployment |
+| [project-readiness/PROJECT_COMPLETION.md](project-readiness/PROJECT_COMPLETION.md) | current build/run/verification status, what's done vs. outstanding |
 | generated | [RETRIEVAL.md](RETRIEVAL.md) · [CLASSIFICATION.md](CLASSIFICATION.md) · [EXTRACTION.md](EXTRACTION.md) · [EVAL.md](EVAL.md) |

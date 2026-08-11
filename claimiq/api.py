@@ -73,11 +73,15 @@ observability.configure_logging(settings().json_logs)
 # Same-origin by default: the SPA is served from this very app, so no CORS header is
 # the correct answer and a wildcard would be a gift to anyone hosting a page that
 # wants a hospital's claim data. Configured explicitly when someone genuinely embeds
-# the API from another origin.
-if settings().cors_origins:
+# the API from another origin -- e.g. the React frontend deployed separately on
+# Vercel. `allow_origin_regex` covers Vercel's per-branch preview subdomains without
+# needing an env var edit on every PR; the exact list still names the real production
+# domain, so the regex is additive rather than a replacement for it.
+if settings().cors_origins or settings().cors_origin_regex:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings().cors_origins,
+        allow_origin_regex=settings().cors_origin_regex or None,
         allow_credentials=True,
         allow_methods=["GET", "POST"],
         allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Request-ID"],
@@ -968,7 +972,8 @@ else:
         """
         return {
             "service": "ClaimIQ API",
-            "ui": "the Streamlit app on http://127.0.0.1:8501 (start.ps1 runs both)",
+            "ui": "run the frontend separately (cd frontend && npm run dev, http://localhost:3000) "
+            "or start.ps1 -Streamlit for the legacy Streamlit UI on http://127.0.0.1:8501",
             "docs": "/docs",
             "health": "/health",
         }
