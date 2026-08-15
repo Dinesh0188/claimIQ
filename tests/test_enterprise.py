@@ -368,6 +368,21 @@ def test_a_batch_larger_than_the_cap_is_refused(client: TestClient, monkeypatch)
     assert response.status_code == 413
 
 
+def test_a_batch_persists_each_claim_under_the_batches_tenant() -> None:
+    import time
+
+    from claimiq import jobs, store
+    registry = jobs.registry()
+    job = registry.submit([packet("BATCH-TENANT-1")], tenant="apollo", key_id="abc")
+    deadline = time.monotonic() + 5.0
+    while job.state.value in ("queued", "running") and time.monotonic() < deadline:
+        time.sleep(0.02)
+    rows, _ = store.list_claims(tenant="apollo")
+    assert any(r["claim_id"] == "BATCH-TENANT-1" for r in rows)
+    rows_local, _ = store.list_claims(tenant="local")
+    assert not any(r["claim_id"] == "BATCH-TENANT-1" for r in rows_local)
+
+
 # --- the HTTP surface ------------------------------------------------------
 
 

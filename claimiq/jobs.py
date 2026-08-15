@@ -194,7 +194,9 @@ class JobRegistry:
                 # Each claim gets its own context, so its trace and LLM call ledger are
                 # its own -- the same isolation a single HTTP request gets. Auditing in
                 # a bare loop would append every claim's nodes to the first claim's trace.
-                result = contextvars.copy_context().run(audit, packet)
+                result = contextvars.copy_context().run(
+                    audit, packet, tenant=job.tenant, key_id=job.key_id, request_id=job.job_id
+                )
                 job.outcomes.append(ClaimOutcome.succeeded(result))
                 METRICS.inc("claimiq_audits_total", {"result": result.verdict, "mode": "batch"})
             except Exception as exc:  # noqa: BLE001 - one bad claim must not stop the batch
