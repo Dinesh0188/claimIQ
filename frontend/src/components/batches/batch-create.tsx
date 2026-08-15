@@ -43,7 +43,14 @@ export function BatchCreate() {
   const [extracting, setExtracting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const ready = entries.filter((e) => e.packet);
+  const withPacket = entries.filter((e) => e.packet);
+  const dupIds = new Set(
+    withPacket
+      .map((e) => e.packet!.claim_id)
+      .filter((id, i, arr) => arr.indexOf(id) !== i)
+  );
+  const ready = withPacket.filter((e) => !dupIds.has(e.packet!.claim_id));
+  const dupRows = withPacket.length - ready.length;
   const failed = entries.filter((e) => e.error);
   const pending = entries.filter((e) => !e.packet && !e.error);
   const nearCap = ready.length > BATCH_CAP * 0.8;
@@ -190,6 +197,13 @@ export function BatchCreate() {
                         <AlertTriangle size={12} className="mt-0.5 shrink-0" />
                         <span className="max-w-[320px] truncate">{e.error}</span>
                       </div>
+                    ) : e.packet && dupIds.has(e.packet.claim_id) ? (
+                      <div className="flex items-start gap-1.5 text-xs text-red-400">
+                        <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                        <span className="max-w-[320px] truncate">
+                          duplicate claim id — same file name as another row
+                        </span>
+                      </div>
                     ) : e.packet ? (
                       <Badge variant="success">
                         <CheckCircle2 size={11} className="mr-1" />
@@ -228,6 +242,7 @@ export function BatchCreate() {
             </Button>
             <span className="text-xs text-muted">
               {ready.length} ready · {failed.length} failed
+              {dupRows > 0 ? ` · ${dupRows} duplicate` : ""}
               {pending.length > 0 ? ` · ${pending.length} reading` : ""}
             </span>
           </div>
