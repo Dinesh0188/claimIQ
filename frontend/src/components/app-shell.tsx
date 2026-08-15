@@ -9,6 +9,7 @@ import {
   KeyRound,
   LayoutDashboard,
   List,
+  MessageSquareText,
   BookOpen,
   Activity,
   Menu,
@@ -27,6 +28,7 @@ const NAV_ITEMS = [
   { path: "/", label: "Check a claim", icon: FileCheck },
   { path: "/claims", label: "Claims", icon: List },
   { path: "/dashboard", label: "Leakage", icon: LayoutDashboard },
+  { path: "/ask", label: "Ask", icon: MessageSquareText },
   { path: "/rules", label: "Rule catalog", icon: BookOpen },
 ];
 

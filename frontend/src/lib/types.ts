@@ -303,6 +303,13 @@ export interface MissingDoc {
   claims: number;
 }
 
+export interface AskResponse {
+  sql: string;
+  explanation: string;
+  columns: string[];
+  rows: Record<string, unknown>[];
+}
+
 // -- Trace --
 
 export interface NodeTrace {

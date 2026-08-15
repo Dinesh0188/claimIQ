@@ -1,4 +1,5 @@
 import type {
+  AskResponse,
   AuditResult,
   ClaimDetail,
   ClaimPacket,
@@ -157,4 +158,6 @@ export const claimiqApi = {
 
   analyticsMissingDocs: (limit = 10) =>
     api.get<MissingDoc[]>("/api/analytics/missing-docs", { limit }),
+
+  ask: (question: string) => api.post<AskResponse>("/api/analytics/ask", { question }),
 };
