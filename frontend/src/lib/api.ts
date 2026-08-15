@@ -13,6 +13,7 @@ import type {
   RuleChunk,
   TopLeakingItem,
 } from "./types";
+import { getApiKey } from "./auth";
 
 // In production (Vercel), the browser calls the backend directly at an absolute URL --
 // set NEXT_PUBLIC_API_URL to the deployed backend's origin (e.g. https://claimiq-api.onrender.com).
@@ -21,6 +22,11 @@ import type {
 // two are deployed separately. Left empty for local dev, where next.config.js
 // rewrites /api, /health and /v1 to http://localhost:8000 and relative paths suffice.
 const BASE = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
+
+function authHeaders(): Record<string, string> {
+  const key = getApiKey();
+  return key ? { "X-API-Key": key } : {};
+}
 
 class ApiError extends Error {
   status: number;
@@ -71,7 +77,9 @@ export const api = {
         .filter(([, v]) => v !== "" && v != null)
         .map(([k, v]) => [k, String(v)])
     ).toString();
-    const res = await fetch(`${BASE}${path}${qs ? `?${qs}` : ""}`);
+    const res = await fetch(`${BASE}${path}${qs ? `?${qs}` : ""}`, {
+      headers: authHeaders(),
+    });
     return unwrap<T>(res);
   },
 
@@ -79,7 +87,7 @@ export const api = {
     const qs = new URLSearchParams(params).toString();
     const res = await fetch(`${BASE}${path}${qs ? `?${qs}` : ""}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify(payload ?? {}),
     });
     return unwrap<T>(res);
@@ -88,7 +96,11 @@ export const api = {
   async upload<T>(path: string, file: File): Promise<T> {
     const form = new FormData();
     form.append("file", file, file.name);
-    const res = await fetch(`${BASE}${path}`, { method: "POST", body: form });
+    const res = await fetch(`${BASE}${path}`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: form,
+    });
     return unwrap<T>(res);
   },
 
@@ -96,7 +108,7 @@ export const api = {
     const qs = new URLSearchParams(params).toString();
     const res = await fetch(`${BASE}${path}${qs ? `?${qs}` : ""}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify(payload),
     });
     if (!res.ok) {

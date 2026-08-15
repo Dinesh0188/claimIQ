@@ -194,6 +194,14 @@ export interface ExtractionResult {
 
 // -- Health endpoint --
 
+export interface HealthSecurity {
+  auth_enabled: boolean;
+  principals: number;
+  tenants: string[];
+  config_problems: string[];
+  rate_limit_per_minute: number;
+}
+
 export interface HealthResponse {
   status: string;
   ai_enabled: boolean;
@@ -204,6 +212,7 @@ export interface HealthResponse {
   corpus_chunks: number;
   dense_retrieval: boolean;
   has_vision: boolean;
+  security: HealthSecurity;
 }
 
 // -- Profiles --

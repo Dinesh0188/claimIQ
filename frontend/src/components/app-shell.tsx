@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import * as Dialog from "@radix-ui/react-dialog";
 import {
   FileCheck,
+  KeyRound,
   LayoutDashboard,
   List,
   BookOpen,
@@ -14,9 +16,12 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { claimiqApi } from "@/lib/api";
+import { getApiKey, setApiKey, clearApiKey } from "@/lib/auth";
+import type { HealthResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ProfileSelector } from "./profile-selector";
 import { ConnectionGuard } from "./connection-guard";
+import { Button } from "./ui/button";
 
 const NAV_ITEMS = [
   { path: "/", label: "Check a claim", icon: FileCheck },
@@ -112,6 +117,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </span>
               </div>
               <div className="text-xs text-muted-2">{health.provider}</div>
+              {health.security?.auth_enabled ? (
+                <ApiKeyControl health={health} />
+              ) : (
+                <div className="text-xs text-muted-2">local demo (no auth)</div>
+              )}
               <div className="text-xs font-mono text-muted-2">
                 {health.corpus_version}
               </div>
@@ -143,5 +153,77 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </main>
       </div>
     </div>
+  );
+}
+
+function ApiKeyControl({ health }: { health: HealthResponse }) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const queryClient = useQueryClient();
+
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["health"] });
+
+  const handleOpenChange = (next: boolean) => {
+    if (next) setValue(getApiKey() ?? "");
+    setOpen(next);
+  };
+
+  const handleSave = () => {
+    setApiKey(value);
+    refresh();
+    setOpen(false);
+  };
+
+  const handleClear = () => {
+    clearApiKey();
+    refresh();
+    setOpen(false);
+  };
+
+  const tenants = health.security?.tenants ?? [];
+
+  return (
+    <Dialog.Root open={open} onOpenChange={handleOpenChange}>
+      <Dialog.Trigger asChild>
+        <Button variant="ghost" size="sm" className="w-full justify-start">
+          <KeyRound size={14} /> API key
+        </Button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-black/60 z-50" />
+        <Dialog.Content className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[320px] bg-panel-2 border border-line rounded-md p-4 shadow-lg">
+          <Dialog.Title className="text-sm font-semibold text-white">
+            API key
+          </Dialog.Title>
+          <Dialog.Description className="text-xs text-muted-2 mt-1">
+            {tenants.length > 0
+              ? `Accessible tenants: ${tenants.join(", ")}`
+              : "No tenants configured"}
+          </Dialog.Description>
+          <input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="claimiq_..."
+            spellCheck={false}
+            className="mt-3 w-full bg-panel-3 border border-line rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-accent"
+          />
+          <div className="mt-4 flex items-center justify-between gap-2">
+            <Button variant="danger" size="sm" onClick={handleClear}>
+              Clear
+            </Button>
+            <div className="flex items-center gap-2">
+              <Dialog.Close asChild>
+                <Button variant="ghost" size="sm">
+                  Cancel
+                </Button>
+              </Dialog.Close>
+              <Button variant="primary" size="sm" onClick={handleSave}>
+                Save
+              </Button>
+            </div>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
