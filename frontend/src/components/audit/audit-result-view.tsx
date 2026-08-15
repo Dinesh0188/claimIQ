@@ -58,7 +58,7 @@ export function AuditResultView({ result, packet, profile }: AuditResultViewProp
   const v = VERDICT_CONFIG[result.verdict] || VERDICT_CONFIG.NEEDS_ATTENTION;
   const VerdictIcon = v.icon;
 
-  const gross = num(result.gross_bill);
+  const gross = num(wf.gross_bill);
   const pct = (x: string) => (gross > 0 ? (num(x) / gross) * 100 : 0);
 
   const nonPayableFindings = useMemo(
@@ -163,7 +163,7 @@ export function AuditResultView({ result, packet, profile }: AuditResultViewProp
         />
         <FigureCard
           label="Gross bill"
-          value={rupees(result.gross_bill)}
+          value={rupees(wf.gross_bill)}
           className=""
           valueClass="text-white"
           sub={`${(num(result.coverage) * 100).toFixed(0)}% assessed`}

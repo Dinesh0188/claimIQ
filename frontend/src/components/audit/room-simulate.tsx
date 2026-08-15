@@ -24,10 +24,7 @@ export function RoomSimulate({
   onReset,
 }: RoomSimulateProps) {
   const { toast } = useToast();
-  const [simulated, setSimulated] = useState<{
-    gain: string;
-    wf: WaterfallResult;
-  } | null>(null);
+  const [simulated, setSimulated] = useState<{ gain: string } | null>(null);
   const [notApplicable, setNotApplicable] = useState(false);
 
   const mutation = useMutation({
@@ -39,7 +36,7 @@ export function RoomSimulate({
         onReset();
         return;
       }
-      setSimulated({ gain: data.gain ?? "0", wf: data.result });
+      setSimulated({ gain: data.gain ?? "0" });
       onApply(data.result);
     },
     onError: (err) => {
