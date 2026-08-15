@@ -296,9 +296,10 @@ eligible proportion    6,000 / 12,000 = 0.5000
             will ask.</li>
           <li><strong>Authentication and multi-tenancy are available, off in the demo.</strong>
             Setting <code>CLAIMIQ_API_KEYS</code> turns on API-key auth with per-tenant
-            scopes and an audit ledger of who viewed which claim. The demo ships with them
-            off, bound to <code>127.0.0.1</code> — enable them before any shared or
-            hospital-wide deployment.</li>
+            scopes. The audit ledger of who viewed which claim is always on, recording as
+            <code>anonymous</code> until keys are set. The demo ships bound to
+            <code>127.0.0.1</code> — enable auth before any shared or hospital-wide
+            deployment.</li>
         </ul>
       </div>
 
@@ -404,11 +405,11 @@ eligible proportion    6,000 / 12,000 = 0.5000
         <div class="answer">
           <p>
             Not as it stands, and the honest answer matters more than a reassuring one.
-            Authentication, access control and an audit trail of who viewed which claim
-            are built and tested, but the demo ships with them off so a local clone works
-            unconfigured. Enabling them is a configuration step (<code>CLAIMIQ_API_KEYS</code>);
-            a shared or hospital-wide deployment must do that before any real claim data
-            reaches it.
+            Authentication and access control are built and tested, but the demo ships
+            with them off so a local clone works unconfigured. The audit trail is always
+            on and ships recording as <code>anonymous</code> until you enable auth.
+            Enabling auth is a configuration step (<code>CLAIMIQ_API_KEYS</code>); a shared
+            or hospital-wide deployment must do that before any real claim data reaches it.
           </p>
           <p>
             The rule corpus is also an unverified snapshot that has not been checked
