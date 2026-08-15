@@ -206,6 +206,7 @@ export interface HealthSecurity {
   tenants: string[];
   config_problems: string[];
   rate_limit_per_minute: number;
+  insecure_deployment: boolean;
 }
 
 export interface HealthResponse {

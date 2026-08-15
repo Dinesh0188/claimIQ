@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 import tempfile
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
@@ -66,7 +67,21 @@ from claimiq.tools.waterfall import PROFILES, simulate_room_downgrade
 SAMPLES = ROOT / "data" / "samples"
 WEB = ROOT / "web"
 
-app = FastAPI(title="ClaimIQ", version="1.1.0")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """Startup warning: the one loud moment an operator actually sees logs."""
+    if insecure_deployment():
+        logging.getLogger("claimiq").warning(
+            "WARNING: authentication is OFF and the API is bound to %s "
+            "(CLAIMIQ_API_KEYS empty, CLAIMIQ_ALLOW_INSECURE_DEMO not set). "
+            "This is an insecure deployment -- do not point it at real claim data.",
+            settings().bind_host,
+        )
+    yield
+
+
+app = FastAPI(title="ClaimIQ", version="1.1.0", lifespan=lifespan)
 
 observability.configure_logging(settings().json_logs)
 

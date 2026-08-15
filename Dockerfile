@@ -53,7 +53,8 @@ RUN chmod +x /app/docker-entrypoint.sh
 ENV PORT=8000
 EXPOSE 8000
 
-# Bound to 0.0.0.0 rather than 127.0.0.1 -- a container's loopback is not reachable
-# from the host or the platform's edge proxy, only 127.0.0.1 was ever correct for the
-# bare-metal `start.ps1` path.
+# docker-entrypoint.sh binds uvicorn to $CLAIMIQ_BIND, which defaults to 127.0.0.1
+# (the bare-metal `start.ps1` posture). Container platforms set CLAIMIQ_BIND=0.0.0.0
+# so their edge proxy can reach the app -- a container's loopback is not reachable
+# from the host or the platform's edge proxy.
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

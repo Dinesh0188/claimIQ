@@ -82,8 +82,9 @@ class Settings:
     # Bind host. Loopback by default so the local demo is never reachable off the
     # machine; Render sets CLAIMIQ_BIND=0.0.0.0 explicitly.
     bind_host: str = "127.0.0.1"
-    # Fail-closed: refuse to run a public bind with authentication off unless this
-    # is set. The demo is safe; an open API holding claim data is not.
+    # A public bind with authentication off is an insecure deployment. It is reported
+    # via insecure_deployment() on /health; it is not refused here -- operators run
+    # demo deployments deliberately.
     allow_insecure_demo: bool = False
 
     @property
