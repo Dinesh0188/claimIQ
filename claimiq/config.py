@@ -74,8 +74,8 @@ class Settings:
     json_logs: bool = False
     # How long clinical detail is kept. Two years covers an Indian insurer's audit
     # cycle; traces are debugging aids and age out far sooner. Nothing purges
-    # automatically -- there is no scheduler in this process, so the operator runs
-    # `scripts/purge.py` from cron and owns the decision.
+    # automatically -- there is no scheduler in this process, so the operator owns the
+    # decision and triggers `POST /v1/retention/purge` (`dry_run=false`) from cron.
     claim_retention_days: int = 365 * 2
     trace_retention_days: int = 90
 

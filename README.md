@@ -84,21 +84,14 @@ Regenerate all of these; none is hand-typed.
 Fusion is worth **+3.8pp at k=5** and ties dense at k=1. Since the classifier is handed five
 candidates, k=5 is the operative metric — but the tie is stated rather than omitted.
 
-**Classification** — `python scripts/bench_classify.py --llm` → [CLASSIFICATION.md](CLASSIFICATION.md)
+**Classification** — `python scripts/bench_classify.py` → [CLASSIFICATION.md](CLASSIFICATION.md)
 
-| strategy | accuracy | **non-payable recall** | false deduction rate |
-|---|---|---|---|
-| `head_only` control | 51.7% | 30.5% | 3.6% |
-| keyword table | 73.6% | 61.0% | 0.0% |
-| retrieval + threshold | 40.2% | 11.9% | 0.0% |
-| deterministic (both) | 74.7% | 62.7% | 0.0% |
-| **grounded LLM** (`gpt-oss-120b`) | 96.6% | **96.6%** | 3.6% |
-| grounded LLM (`gemma-4-26b`) | 100.0% | 100.0% | 0.0% |
-
-Two models are listed because the result was not the one I expected: the small free
-Gemma 4 26B beat the much larger `gpt-oss-120b` on this task, and did it with no false
-deductions. Worth remembering before reaching for the biggest available model — on a
-narrow, well-grounded classification task the extra capacity bought nothing here.
+| strategy | accuracy | **non-payable recall** | false deduction rate | citation rate |
+|---|---|---|---|---|
+| `head_only` control | 51.7% | 30.5% | 3.6% | 0% |
+| `keyword` table | 82.8% | 74.6% | 0.0% | 100% |
+| `retrieval` | 40.2% | 11.9% | 0.0% | 100% |
+| `deterministic` | 81.6% | 74.6% | 0.0% | 100% |
 
 **Read `accuracy` against the `head_only` control, not on its own.** That control ignores
 the item description entirely and guesses from the billing head — and it does well because
@@ -107,9 +100,10 @@ column nearly determines the payable/non-payable split by itself. A headline of 
 accuracy" would be mostly an artifact.
 
 **`non-payable recall` is the honest column.** It measures assigning the correct list among
-four — I, II, III or IV — which the head cannot indicate at all. The LLM's real contribution
-is **62.7% → 100%** there. *false deduction rate* is the expensive error: a real medical
-charge wrongly disallowed.
+four — I, II, III or IV — which the head cannot indicate at all. On that column the keyword
+table and the full deterministic engine both land at **74.6%**; retrieval alone manages only
+**11.9%**. *false deduction rate* is the expensive error: a real medical charge wrongly
+disallowed.
 
 **Bill extraction** — `python scripts/bench_extract.py` → [EXTRACTION.md](EXTRACTION.md)
 

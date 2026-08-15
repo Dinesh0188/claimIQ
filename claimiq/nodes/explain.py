@@ -12,7 +12,7 @@ import json
 
 from pydantic import BaseModel, Field
 
-from claimiq.llm import LLMUnavailable, try_client
+from claimiq.llm import try_client
 from claimiq.state import ClaimState
 
 SYSTEM = """You explain Indian health-insurance claim deductions to hospital billing staff.
@@ -169,7 +169,7 @@ def explain_node(state: ClaimState) -> dict:
             # Repairs must not be served from cache or the loop can never converge.
             temperature=0.0 if not state.verify_problems else 0.2,
         )
-    except (LLMUnavailable, Exception) as exc:  # noqa: BLE001 - demo must not die on a 429
+    except Exception as exc:  # noqa: BLE001 - demo must not die on a 429
         narrative, actions = _deterministic(state)
         return {
             "narrative": narrative,
