@@ -1,0 +1,211 @@
+﻿{
+  "claim_id": "CL-2025-0137",
+  "gross_bill": "1000000",
+  "diagnosis": "Acute pancreatitis",
+  "procedure": "",
+  "findings": [
+    {
+      "line_no": 4,
+      "description": "Surgical instrument fee billed at rate above the scheduled list",
+      "head": "PROCEDURE",
+      "amount": "20000",
+      "classification": "LIST_III_PROCEDURE",
+      "bearer": "HOSPITAL",
+      "deducted_amount": "20000",
+      "reason": "The charge exceeds the schedule for the listed procedure by ₹5,000.",
+      "confidence": 0.97,
+      "cited_chunk_id": "chunk-142",
+      "source": "retrieval",
+      "rule_id": "R-12.1",
+      "severity": "BLOCKER",
+      "field": "rate",
+      "observed": "18000",
+      "expected": "15000",
+      "citation": "Schedule of procedures, List III, item 12",
+      "source_id": "SRC-LIST3-12",
+      "impact": "Hospital overbilling"
+    },
+    {
+      "line_no": 7,
+      "description": "Oral antibiotic marked optional",
+      "head": "PHARMACY",
+      "amount": "6500",
+      "classification": "LIST_I_OPTIONAL",
+      "bearer": "PATIENT",
+      "deducted_amount": "0",
+      "reason": "Listed as an optional item under the policy; patient cost.",
+      "confidence": 0.91,
+      "cited_chunk_id": null,
+      "source": "keyword",
+      "rule_id": "R-2.4",
+      "severity": "WARNING",
+      "field": "classification",
+      "observed": "Not on primary list",
+      "expected": "On primary list",
+      "citation": "Schedule of benefits, List I",
+      "source_id": "SRC-LIST1-4",
+      "impact": null
+    },
+    {
+      "line_no": 1,
+      "description": "Room rent day 1",
+      "head": "ROOM",
+      "amount": "12000",
+      "classification": "PAYABLE",
+      "bearer": "INSURER",
+      "deducted_amount": "0",
+      "reason": "Room charge matches a primary billing head and the policy room cap applies separately.",
+      "confidence": 0.99,
+      "cited_chunk_id": null,
+      "source": "keyword",
+      "rule_id": "R-1.0",
+      "severity": "INFO",
+      "field": "",
+      "observed": "",
+      "expected": "",
+      "citation": "",
+      "source_id": "SRC-MASTER-1",
+      "impact": null
+    }
+  ],
+  "profiles": {
+    "typical": {
+      "profile": "typical",
+      "gross_bill": "1000000",
+      "item_deduction_total": "120000",
+      "policy_deductions": [
+        {
+          "step": "room_rent_excess",
+          "basis": "Room billed at ₹12,000/day vs policy cap ₹7,500/day for 3 days",
+          "amount": "13500",
+          "inputs": {
+            "rate_per_day": "12000",
+            "cap_per_day": "7500",
+            "days": "3"
+          },
+          "formula": "max(0, 12000 - 7500) * 3 = 13500"
+        },
+        {
+          "step": "copay_on_settlement",
+          "basis": "10% co-pay applies to the settlement base",
+          "amount": "10000",
+          "inputs": {
+            "copay_percent": "10",
+            "base": "100000"
+          },
+          "formula": "0.10 * 100000 = 10000"
+        }
+      ],
+      "projected_settlement": "850000",
+      "patient_liability": "30000",
+      "hospital_writeoff": "120000"
+    },
+    "strict": {
+      "profile": "strict",
+      "gross_bill": "1000000",
+      "item_deduction_total": "145000",
+      "policy_deductions": [
+        {
+          "step": "room_rent_excess",
+          "basis": "Room billed at ₹12,000/day vs strict cap ₹6,500/day for 3 days",
+          "amount": "16500",
+          "inputs": {
+            "rate_per_day": "12000",
+            "cap_per_day": "6500",
+            "days": "3"
+          },
+          "formula": "max(0, 12000 - 6500) * 3 = 16500"
+        },
+        {
+          "step": "copay_on_settlement",
+          "basis": "10% co-pay applies to the settlement base",
+          "amount": "12000",
+          "inputs": {
+            "copay_percent": "10",
+            "base": "120000"
+          },
+          "formula": "0.10 * 120000 = 12000"
+        }
+      ],
+      "projected_settlement": "820000",
+      "patient_liability": "35000",
+      "hospital_writeoff": "145000"
+    },
+    "permissive": {
+      "profile": "permissive",
+      "gross_bill": "1000000",
+      "item_deduction_total": "95000",
+      "policy_deductions": [
+        {
+          "step": "room_rent_excess",
+          "basis": "Room billed at ₹12,000/day vs permissive cap ₹9,000/day for 3 days",
+          "amount": "9000",
+          "inputs": {
+            "rate_per_day": "12000",
+            "cap_per_day": "9000",
+            "days": "3"
+          },
+          "formula": "max(0, 12000 - 9000) * 3 = 9000"
+        },
+        {
+          "step": "copay_on_settlement",
+          "basis": "10% co-pay applies to the settlement base",
+          "amount": "8000",
+          "inputs": {
+            "copay_percent": "10",
+            "base": "80000"
+          },
+          "formula": "0.10 * 80000 = 8000"
+        }
+      ],
+      "projected_settlement": "880000",
+      "patient_liability": "25000",
+      "hospital_writeoff": "95000"
+    }
+  },
+  "typical_profile": "typical",
+  "document_gaps": [
+    {
+      "document_id": "doc-9",
+      "name": "Pre-auth approval letter",
+      "reason": "Not attached to the claim file",
+      "severity": "WARNING",
+      "rule_id": "R-5.0",
+      "citation": "Policy clause 14.2",
+      "impact": "Delays settlement"
+    }
+  ],
+  "consistency_flags": [
+    {
+      "check_id": "CHK-11",
+      "message": "Admission date precedes discharge date",
+      "severity": "INFO"
+    }
+  ],
+  "narrative": "The claim is mostly payable. A surgical instrument fee was overbilled against the schedule and is deducted from settlement; one pharmacy line falls to the patient as an optional item.",
+  "action_list": [
+    "Re-raise the corrected procedure charge of ₹15,000",
+    "Re-submit the pre-auth approval letter",
+    "Confirm the patient cost for the optional pharmacy line"
+  ],
+  "unmapped_count": 0,
+  "ai_used": true,
+  "errors": [],
+  "corpus_version": "v2025.08.1",
+  "verify_passed": true,
+  "verify_problems": [],
+  "repair_count": 0,
+  "coverage": "0.92",
+  "caveats": [
+    "Settlement assumes the room is downgraded to the policy cap for the excess portion."
+  ],
+  "disclosures": [
+    "Coverage assessed at 92% of the gross bill using the attached policy terms.",
+    "Line items were matched against the primary billing list and the three optional lists.",
+    "Extraction confidence below 0.8 was flagged for manual review."
+  ],
+  "strategy": "waterfall",
+  "verdict": "NEEDS_ATTENTION"
+}
+
+
