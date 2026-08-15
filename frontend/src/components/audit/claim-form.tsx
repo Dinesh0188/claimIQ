@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, CheckCircle } from "lucide-react";
 import { num, today, shiftDays } from "@/lib/utils";
+import { buildPacketFromUploads } from "@/lib/packet";
 import type { ClaimPacket, ExtractionResult } from "@/lib/types";
 
 interface ClaimFormProps {
@@ -99,42 +100,7 @@ export function ClaimForm({ uploads, onSubmit, disabled }: ClaimFormProps) {
     e.preventDefault();
     if (blockers.length) return;
 
-    const name = (uploads[0]?.filename || "upload").replace(/\.[^.]+$/, "");
-
-    const packet: ClaimPacket = {
-      claim_id: `UPLOAD-${name}`.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 40),
-      context: {
-        claim_type: formData.claim_type,
-        admission_date: formData.admission,
-        discharge_date: formData.discharge,
-        primary_diagnosis: formData.diagnosis.trim(),
-        procedure_performed: formData.procedure.trim() || null,
-        involves_implant: formData.implant,
-        preauth_approved_amount: num(formData.preauth) ? formData.preauth : null,
-        documents_attached: uploads
-          .map((u) => u.document_id)
-          .filter(Boolean) as string[],
-      },
-      policy: {
-        policy_id: policy?.policy_id || "not stated",
-        sum_insured: formData.sum_insured,
-        balance_sum_insured: formData.sum_insured,
-        room_rent_cap_per_day: num(formData.room_cap) ? formData.room_cap : null,
-        icu_cap_per_day: policy?.icu_cap_per_day || null,
-        copay_percent: formData.copay,
-        deductible: "0",
-        procedure_sublimits: {},
-      },
-      room_stay: {
-        room_category: formData.room_category.trim() || "Room",
-        rate_per_day: formData.room_rate,
-        days: Math.round(num(formData.room_days)),
-        is_icu: formData.is_icu,
-      },
-      line_items: lineItems.map((it, i) => ({ ...it, line_no: i + 1 })),
-    };
-
-    onSubmit(packet);
+    onSubmit(buildPacketFromUploads(uploads, formData));
   };
 
   return (

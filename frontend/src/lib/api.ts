@@ -1,11 +1,13 @@
 import type {
   AskResponse,
   AuditResult,
+  BatchDetail,
   ClaimDetail,
   ClaimPacket,
   ClaimsListResponse,
   ExtractionResult,
   HealthResponse,
+  JobSummary,
   LeakageItem,
   MissingDoc,
   PortfolioSummary,
@@ -171,4 +173,17 @@ export const claimiqApi = {
     }),
 
   ask: (question: string) => api.post<AskResponse>("/api/analytics/ask", { question }),
+
+  submitBatch: (claims: ClaimPacket[]) =>
+    api.post<JobSummary>("/v1/batches", { claims }),
+
+  listBatches: (limit = 50) => api.get<JobSummary[]>("/v1/batches", { limit }),
+
+  batchStatus: (jobId: string) =>
+    api.get<BatchDetail>(`/v1/batches/${encodeURIComponent(jobId)}`),
+
+  cancelBatch: (jobId: string) =>
+    api.post<{ job_id: string; state: string }>(
+      `/v1/batches/${encodeURIComponent(jobId)}/cancel`
+    ),
 };

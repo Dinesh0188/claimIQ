@@ -388,3 +388,48 @@ export interface RuleCatalog {
   chunk_ids: string[];
   rules?: RuleChunk[];
 }
+
+// -- Batches --
+
+export type JobState = "queued" | "running" | "done" | "cancelled";
+
+export interface ClaimOutcome {
+  claim_id: string;
+  ok: boolean;
+  verdict: string;
+  settlement: string;
+  patient_liability: string;
+  hospital_writeoff: string;
+  coverage: string;
+  findings: number;
+  error: string;
+}
+
+export interface JobSummary {
+  job_id: string;
+  tenant: string;
+  state: JobState;
+  total: number;
+  completed: number;
+  failed: number;
+  progress: number;
+  submitted_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  outcomes?: ClaimOutcome[];
+  poll?: string;
+}
+
+export interface BatchTotals {
+  claims: number;
+  settlement: string;
+  patient_liability: string;
+  hospital_writeoff: string;
+  needs_attention: number;
+  cannot_verify: number;
+  clean: number;
+}
+
+export interface BatchDetail extends JobSummary {
+  totals: BatchTotals;
+}
