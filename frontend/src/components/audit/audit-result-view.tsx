@@ -15,7 +15,8 @@ import {
   ChevronRight,
   Copy,
 } from "lucide-react";
-import type { AuditResult, ClaimPacket, ItemFinding } from "@/lib/types";
+import type { AuditResult, ClaimPacket, ItemFinding, WaterfallResult } from "@/lib/types";
+import { RoomSimulate } from "./room-simulate";
 
 interface AuditResultViewProps {
   result: AuditResult;
@@ -46,7 +47,14 @@ const VERDICT_CONFIG = {
 
 export function AuditResultView({ result, packet, profile }: AuditResultViewProps) {
   const { toast } = useToast();
-  const wf = result.profiles[profile] || result.profiles.typical;
+  const originalWf = result.profiles[profile] || result.profiles.typical;
+  const [sourceKey, setSourceKey] = useState(`${result.claim_id}:${profile}`);
+  const [simulatedWf, setSimulatedWf] = useState<WaterfallResult | null>(null);
+  if (sourceKey !== `${result.claim_id}:${profile}`) {
+    setSourceKey(`${result.claim_id}:${profile}`);
+    setSimulatedWf(null);
+  }
+  const wf = simulatedWf ?? originalWf;
   const v = VERDICT_CONFIG[result.verdict] || VERDICT_CONFIG.NEEDS_ATTENTION;
   const VerdictIcon = v.icon;
 
@@ -116,6 +124,15 @@ export function AuditResultView({ result, packet, profile }: AuditResultViewProp
           {e}
         </div>
       ))}
+
+      {/* Room within cap what-if */}
+      <RoomSimulate
+        key={sourceKey}
+        packet={packet}
+        profile={profile}
+        onApply={setSimulatedWf}
+        onReset={() => setSimulatedWf(null)}
+      />
 
       {/* Figures */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

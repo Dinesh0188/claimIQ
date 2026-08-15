@@ -13,6 +13,7 @@ import type {
   RecoveryModel,
   RuleCatalog,
   RuleChunk,
+  SimulateRoomResponse,
   TopLeakingItem,
   TraceResponse,
 } from "./types";
@@ -135,6 +136,9 @@ export const claimiqApi = {
   extract: (file: File) => api.upload<ExtractionResult>("/api/extract", file),
 
   audit: (packet: ClaimPacket) => api.post<AuditResult>("/api/audit", packet),
+
+  simulateRoom: (packet: ClaimPacket, profile = "typical") =>
+    api.post<SimulateRoomResponse>("/api/simulate-room", packet, { profile }),
 
   report: (packet: ClaimPacket, profile: string) =>
     api.pdf("/api/report", packet, { profile }),

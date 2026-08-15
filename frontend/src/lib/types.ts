@@ -167,6 +167,12 @@ export interface AuditResult {
   verdict: Verdict;
 }
 
+export interface SimulateRoomResponse {
+  applicable: boolean;
+  result?: WaterfallResult | null;
+  gain?: string | null;
+}
+
 // -- Extraction response --
 
 export interface ExtractionResult {
