@@ -261,8 +261,9 @@ def simulate_room_downgrade(
     downgraded = packet.model_copy(deep=True)
     downgraded.room_stay.rate_per_day = cap
     saved_per_day = packet.room_stay.rate_per_day - cap
+    stay_rate = packet.room_stay.rate_per_day
     for item in downgraded.line_items:
-        if item.head == "ROOM":
+        if item.head == "ROOM" and item.unit_rate == stay_rate:
             item.amount = _money(item.amount - saved_per_day * item.quantity)
             item.unit_rate = cap
 
@@ -271,7 +272,9 @@ def simulate_room_downgrade(
     by_line = {li.line_no: li.amount for li in downgraded.line_items}
     for f in adjusted:
         if f.head == "ROOM":
-            f.amount = by_line.get(f.line_no, f.amount)
+            line = by_line.get(f.line_no)
+            if line is not None and line != f.amount:
+                f.amount = line
 
     result = compute_waterfall(downgraded, adjusted, profile)
     return result, result.projected_settlement - baseline.projected_settlement
