@@ -191,14 +191,18 @@ def audit(
     )
 
     if persist:
-        from claimiq.store import save_audit
-
-        save_audit(
-            result,
-            ai_pipeline=state.ai_used,
-            month=packet.context.discharge_date.strftime("%Y-%m"),
-            tenant=tenant,
-        )
+        from claimiq import store
+        try:
+            store.save_audit(
+                result,
+                ai_pipeline=state.ai_used,
+                month=packet.context.discharge_date.strftime("%Y-%m"),
+                tenant=tenant,
+            )
+        except Exception as exc:  # noqa: BLE001
+            result.errors.append(
+                f"audit persistence failed: {type(exc).__name__}: {exc}"
+            )
 
     # The ledger records every determination, including the ones that are not persisted
     # to the portfolio -- `persist=False` means "this was a what-if, keep it out of the

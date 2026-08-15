@@ -383,6 +383,16 @@ def test_a_batch_persists_each_claim_under_the_batches_tenant() -> None:
     assert not any(r["claim_id"] == "BATCH-TENANT-1" for r in rows_local)
 
 
+def test_a_store_failure_never_fails_the_audit(monkeypatch) -> None:
+    from claimiq import graph, store
+    def boom(*a, **k):
+        raise RuntimeError("disk full")
+    monkeypatch.setattr(store, "save_audit", boom)
+    result = graph.audit(packet("STORE-FAIL-1"), tenant="apollo", key_id="abc")
+    assert result.claim_id == "STORE-FAIL-1"
+    assert any("persistence failed" in e for e in result.errors)
+
+
 # --- the HTTP surface ------------------------------------------------------
 
 
