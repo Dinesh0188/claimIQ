@@ -387,7 +387,9 @@ class ExtractedPolicy(BaseModel):
     notes: str = Field(default="", description="Anything material the fields cannot hold")
 
 
-def extract_policy_terms(path: Path, client: LLMClient | None = None) -> ExtractedPolicy | None:
+def extract_policy_terms(
+    path: Path, client: LLMClient | None = None, pretext: str | None = None
+) -> ExtractedPolicy | None:
     """Read settlement terms out of an uploaded policy schedule.
 
     The schedule states the sum insured, room limit and co-pay outright. Asking the user
@@ -399,7 +401,7 @@ def extract_policy_terms(path: Path, client: LLMClient | None = None) -> Extract
     if client is None:
         return None
 
-    text = document_text(path, max_pages=4)
+    text = pretext or document_text(path, max_pages=4)
     if len(text) < 80:
         return None
 
@@ -437,7 +439,9 @@ class ExtractedContext(BaseModel):
     involves_implant: bool = False
 
 
-def extract_clinical_context(path: Path, client: LLMClient | None = None) -> ExtractedContext | None:
+def extract_clinical_context(
+    path: Path, client: LLMClient | None = None, pretext: str | None = None
+) -> ExtractedContext | None:
     """Read the admission facts out of an uploaded discharge summary.
 
     Same bargain as `extract_policy_terms`: the summary states the dates, the diagnosis
@@ -451,7 +455,7 @@ def extract_clinical_context(path: Path, client: LLMClient | None = None) -> Ext
     if client is None:
         return None
 
-    text = document_text(path, max_pages=4)
+    text = pretext or document_text(path, max_pages=4)
     if len(text) < 80:
         return None
 
@@ -466,12 +470,14 @@ def extract_clinical_context(path: Path, client: LLMClient | None = None) -> Ext
         return None
 
 
+def read_text(path: Path, max_pages: int = MAX_PAGES) -> str:
+    text = "\n".join(pdf_text_layer_pages(path, max_pages)).strip()
+    return text if len(text) >= 60 else ocr_pages(path, max_pages)
+
+
 def document_text(path: Path, max_pages: int = 3) -> str:
     """Cheapest readable text for classification: text layer first, OCR only if bare."""
-    text = "\n".join(pdf_text_layer_pages(path, max_pages)).strip()
-    if len(text) >= 60:
-        return text
-    return ocr_pages(path, max_pages)
+    return read_text(path, max_pages)
 
 
 def _page_images(path: Path, scale: float, max_pages: int = MAX_PAGES) -> list:
@@ -552,10 +558,10 @@ def _ocr_chunks(text: str, client: LLMClient) -> list[str]:
 
 
 def extract_via_ocr(
-    path: Path, client: LLMClient
+    path: Path, client: LLMClient, pretext: str | None = None
 ) -> tuple[list[BillLineItem], ExtractedBill] | None:
     """OCR the scan, then let the text model structure it. None if OCR found nothing."""
-    text = ocr_pages(path)
+    text = pretext or ocr_pages(path)
     if len(text) < 80:
         return None
 
@@ -620,7 +626,10 @@ def pdf_text_layer_pages(path: Path, max_pages: int = MAX_PAGES) -> list[str]:
 
 
 def extract_bill(
-    path: Path, client: LLMClient | None = None, force_vision: bool = False
+    path: Path,
+    client: LLMClient | None = None,
+    force_vision: bool = False,
+    pretext: str | None = None,
 ) -> tuple[list[BillLineItem], ExtractedBill]:
     """Cheapest path that can actually read the document.
 
@@ -651,7 +660,7 @@ def extract_bill(
     # Preferred over vision because it costs ~1,500 text tokens instead of ~11,111
     # image tokens, which is the difference between fitting the free tier and not.
     if not force_vision:
-        ocr_result = extract_via_ocr(path, client)
+        ocr_result = extract_via_ocr(path, client, pretext)
         if ocr_result is not None:
             return ocr_result
 

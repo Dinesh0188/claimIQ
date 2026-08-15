@@ -78,6 +78,39 @@ def test_extract_returns_the_room_stay_it_read(uploaded: dict) -> None:
     assert uploaded["room_days"] == 8
 
 
+def test_extract_via_ocr_reuses_the_passed_text(monkeypatch) -> None:
+    """A scanned upload is OCR'd twice today -- once to classify the document and
+    again inside extraction. `pretext` supplies the text the OCR path already read,
+    so `ocr_pages` is skipped; without it the single fallback OCR still runs."""
+    from pathlib import Path
+
+    from claimiq.nodes import extract
+
+    calls = {"n": 0}
+
+    def counting(path, max_pages=extract.MAX_PAGES):
+        calls["n"] += 1
+        return ""
+
+    monkeypatch.setattr(extract, "ocr_pages", counting)
+
+    text = "\n".join(f"ITEM {i} 100" for i in range(20))  # 80+ chars, so it is usable
+    client = object()  # extract_via_ocr reaches client only after the text check
+
+    try:
+        extract.extract_via_ocr(Path("scan.pdf"), client, pretext=text)
+    except AttributeError:
+        # The fake client cannot structure anything, but that failure only happens
+        # after the `pretext or ocr_pages(path)` line, so the count is what we assert.
+        pass
+    assert calls["n"] == 0  # ocr_pages never called because pretext supplied
+
+    calls["n"] = 0
+    result = extract.extract_via_ocr(Path("scan.pdf"), client, pretext=None)
+    assert calls["n"] == 1  # without pretext, ocr_pages is called exactly once
+    assert result is None  # counting() returns "", so nothing was readable
+
+
 def test_extract_rejects_an_unsupported_file_type(client: TestClient) -> None:
     response = client.post(
         "/api/extract", files={"file": ("notes.txt", b"hello", "text/plain")}

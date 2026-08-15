@@ -50,10 +50,10 @@ from claimiq.llm import LLMUnavailable, try_client
 from claimiq.nodes.extract import (
     ExtractedBill,
     detect_document_type,
-    document_text,
     extract_bill,
     extract_clinical_context,
     extract_policy_terms,
+    read_text,
     room_stay_from_items,
 )
 from claimiq.observability import METRICS, log
@@ -466,9 +466,8 @@ async def extract(
             tmp.write(payload)
             tmp_path = Path(tmp.name)
 
-        doc_id, doc_label = await run_in_threadpool(
-            lambda: detect_document_type(document_text(tmp_path))
-        )
+        text = await run_in_threadpool(read_text, tmp_path)
+        doc_id, doc_label = await run_in_threadpool(detect_document_type, text)
 
         # Classification never gates extraction. Keyword guessing is weak evidence --
         # a bill listing "Vascular graft (implant)" was once scored as an implant
@@ -479,7 +478,7 @@ async def extract(
         if doc_id == "DOC-POLICY":
             # The schedule states sum insured, room limit and co-pay outright. Reading
             # them beats making the user retype what they just uploaded.
-            found = await run_in_threadpool(extract_policy_terms, tmp_path)
+            found = await run_in_threadpool(extract_policy_terms, tmp_path, None, text)
             policy_terms = found.model_dump() if found else None
             items, extracted = [], ExtractedBill(method="policy")
         else:
@@ -488,11 +487,11 @@ async def extract(
                 # diagnosis and the procedure. Unlike that branch this does not skip
                 # extraction -- the rule below still has to be able to correct a bill
                 # that keyword scoring misfiled as a summary.
-                found_context = await run_in_threadpool(extract_clinical_context, tmp_path)
+                found_context = await run_in_threadpool(extract_clinical_context, tmp_path, None, text)
                 clinical_context = found_context.model_dump() if found_context else None
 
             try:
-                items, extracted = await run_in_threadpool(extract_bill, tmp_path)
+                items, extracted = await run_in_threadpool(extract_bill, tmp_path, None, False, text)
             except (APIError, LLMUnavailable) as exc:
                 # The provider being unreachable is not "this document is unreadable".
                 # Saying "check the page is straight" when the real problem is a 403
