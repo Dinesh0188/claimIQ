@@ -165,6 +165,21 @@ def test_capsule_is_not_a_cap() -> None:
     assert classify_alias(item("Capsule omeprazole", "120")).classification == "PAYABLE"
 
 
+def test_retrieval_never_deducts_a_primary_service() -> None:
+    from claimiq.nodes.classify import classify_retrieval
+    from claimiq.state import BillLineItem
+    item = BillLineItem(
+        line_no=1,
+        description="Diapers",
+        head="PROCEDURE",
+        quantity="1",
+        unit_rate="5000",
+        amount="5000",
+    )
+    d = classify_retrieval(item)
+    assert d.classification == "PAYABLE"
+
+
 # --- money edge cases through the whole engine ----------------------------
 
 

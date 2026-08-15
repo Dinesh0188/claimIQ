@@ -194,6 +194,12 @@ classify_keyword = classify_alias
 
 
 def classify_retrieval(item: BillLineItem) -> Determination:
+    if item.head != "OTHER":
+        return Determination(
+            classification="PAYABLE",
+            reason=f"Billed under head {item.head}, a primary service.",
+            source="retrieval",
+        )
     hits = get_index().search(item.description, k=CANDIDATES_PER_ITEM, strategy="rrf")
     candidates = [h for h in hits if h.chunk.list_name]
     if not candidates:
