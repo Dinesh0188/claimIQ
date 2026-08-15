@@ -166,6 +166,128 @@ def test_room_downgrade_only_reduces_the_stay_row() -> None:
     )
 
 
+def test_room_downgrade_reduces_row_without_printed_rate() -> None:
+    """Bills that print only the row total must still be reduced.
+
+    extract.py's `_row_to_item` leaves `unit_rate` as Decimal("0") when the rate
+    column is empty, and `room_stay_from_items` derives `rate_per_day = amount /
+    quantity`. The stay row then carries `unit_rate == 0` while
+    `room_stay.rate_per_day` is 8000, so matching on the printed unit rate finds no
+    row and the downgrade reduces nothing -- a regression against the pre-fix loop
+    that reduced every ROOM row.
+    """
+    packet = ClaimPacket(
+        claim_id="SYNTHETIC-DERIVED-ROOM-001",
+        context=ClaimContext(
+            claim_type="cashless",
+            admission_date=date(2026, 6, 14),
+            discharge_date=date(2026, 6, 20),
+            primary_diagnosis="Severe pneumonia",
+        ),
+        policy=PolicyTerms(
+            policy_id="SYNTH-POL-DERIVED",
+            sum_insured=Decimal("300000"),
+            balance_sum_insured=Decimal("300000"),
+            room_rent_cap_per_day=Decimal("6000"),
+            icu_cap_per_day=Decimal("12000"),
+        ),
+        room_stay=RoomStay(
+            room_category="General Ward",
+            rate_per_day=Decimal("8000"),
+            days=6,
+            is_icu=False,
+        ),
+        line_items=[
+            BillLineItem(
+                line_no=1,
+                description="Room charges - General",
+                head="ROOM",
+                quantity=Decimal("6"),
+                unit_rate=Decimal("0"),
+                amount=Decimal("48000"),
+            ),
+            BillLineItem(
+                line_no=2,
+                description="Room charges - Ward",
+                head="ROOM",
+                quantity=Decimal("2"),
+                unit_rate=Decimal("4000"),
+                amount=Decimal("8000"),
+            ),
+        ],
+    )
+    outcome = simulate_room_downgrade(packet, findings_for(packet), "typical")
+    assert outcome is not None, "the 8000/day stay (48000/6) breaches the 6000/day cap"
+
+    downgraded, gain = outcome
+    assert downgraded.gross_bill == Decimal("44000"), (
+        "the stay row must lose (8000 - 6000) x 6 = 12000 even though its printed "
+        "unit_rate is 0: 48000 - 12000, plus the untouched 8000 ward row"
+    )
+    assert (
+        downgraded.projected_settlement
+        + downgraded.patient_liability
+        + downgraded.hospital_writeoff
+        == downgraded.gross_bill
+    )
+
+
+def test_room_downgrade_matches_repeating_derived_rate() -> None:
+    """A stay whose derived rate is a repeating decimal must still match exactly.
+
+    When the bill prints only the row total, `rate_per_day = amount / quantity` can
+    be a repeating decimal (40000 / 3). Matching the stay row by a printed unit rate
+    can never hit it; matching by the same derivation is exact because both sides are
+    the same Decimal division.
+    """
+    packet = ClaimPacket(
+        claim_id="SYNTHETIC-REPEATING-ROOM-001",
+        context=ClaimContext(
+            claim_type="cashless",
+            admission_date=date(2026, 6, 14),
+            discharge_date=date(2026, 6, 17),
+            primary_diagnosis="Severe pneumonia",
+        ),
+        policy=PolicyTerms(
+            policy_id="SYNTH-POL-REPEATING",
+            sum_insured=Decimal("300000"),
+            balance_sum_insured=Decimal("300000"),
+            room_rent_cap_per_day=Decimal("6000"),
+            icu_cap_per_day=Decimal("12000"),
+        ),
+        room_stay=RoomStay(
+            room_category="Deluxe Room",
+            rate_per_day=Decimal("40000") / Decimal("3"),
+            days=3,
+            is_icu=False,
+        ),
+        line_items=[
+            BillLineItem(
+                line_no=1,
+                description="Room charges - Deluxe",
+                head="ROOM",
+                quantity=Decimal("3"),
+                unit_rate=Decimal("0"),
+                amount=Decimal("40000"),
+            ),
+        ],
+    )
+    outcome = simulate_room_downgrade(packet, findings_for(packet), "typical")
+    assert outcome is not None, "the 40000/3 per-day stay breaches the 6000/day cap"
+
+    downgraded, gain = outcome
+    assert downgraded.gross_bill == Decimal("18000.00"), (
+        "40000/3 per day against a 6000 cap saves 7333.33.../day for 3 days; "
+        "40000 - 21999.99... = 18000.00 once quantized to the paisa"
+    )
+    assert (
+        downgraded.projected_settlement
+        + downgraded.patient_liability
+        + downgraded.hospital_writeoff
+        == downgraded.gross_bill
+    )
+
+
 def test_profile_ordering_is_monotonic() -> None:
     """Lenient must never settle below conservative, or the profiles are mislabelled."""
     packet = load(Path(__file__).parent.parent / "data" / "samples" / "cardiac.json")

@@ -15,6 +15,7 @@ from decimal import Decimal
 
 from claimiq.money import quantize as _money
 from claimiq.state import (
+    BillLineItem,
     ClaimPacket,
     Head,
     ItemFinding,
@@ -44,6 +45,20 @@ PROFILES: dict[str, dict] = {
         "excluded_heads": ["PHARMACY", "IMPLANT", "INVESTIGATION", "CONSULTATION"],
     },
 }
+
+
+def _rate_per_day(item: BillLineItem) -> Decimal:
+    """Per-day rate of a room row, mirroring extract.py's derivation exactly.
+
+    Bills that print only the row total carry `unit_rate == 0`; the stay rate is then
+    `amount / quantity` -- the same division that derived `room_stay.rate_per_day`, so
+    comparing against it is exact, even for a repeating decimal.
+    """
+    if item.unit_rate > 0:
+        return item.unit_rate
+    if item.quantity > 0:
+        return item.amount / item.quantity
+    return item.amount
 
 
 def _payable_by_head(findings: list[ItemFinding]) -> dict[Head, Decimal]:
@@ -263,7 +278,7 @@ def simulate_room_downgrade(
     saved_per_day = packet.room_stay.rate_per_day - cap
     stay_rate = packet.room_stay.rate_per_day
     for item in downgraded.line_items:
-        if item.head == "ROOM" and item.unit_rate == stay_rate:
+        if item.head == "ROOM" and _rate_per_day(item) == stay_rate:
             item.amount = _money(item.amount - saved_per_day * item.quantity)
             item.unit_rate = cap
 
