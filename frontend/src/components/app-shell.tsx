@@ -14,6 +14,7 @@ import {
   Activity,
   Menu,
   X,
+  TrendingUp,
 } from "lucide-react";
 import { useState } from "react";
 import { claimiqApi } from "@/lib/api";
@@ -28,6 +29,7 @@ const NAV_ITEMS = [
   { path: "/", label: "Check a claim", icon: FileCheck },
   { path: "/claims", label: "Claims", icon: List },
   { path: "/dashboard", label: "Leakage", icon: LayoutDashboard },
+  { path: "/recovery", label: "Recovery", icon: TrendingUp },
   { path: "/ask", label: "Ask", icon: MessageSquareText },
   { path: "/rules", label: "Rule catalog", icon: BookOpen },
 ];

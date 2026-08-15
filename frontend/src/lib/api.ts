@@ -10,6 +10,7 @@ import type {
   MissingDoc,
   PortfolioSummary,
   ProfileConfig,
+  RecoveryModel,
   RuleCatalog,
   RuleChunk,
   TopLeakingItem,
@@ -158,6 +159,12 @@ export const claimiqApi = {
 
   analyticsMissingDocs: (limit = 10) =>
     api.get<MissingDoc[]>("/api/analytics/missing-docs", { limit }),
+
+  recovery: (annualClaimVolume = 0, limit = 12) =>
+    api.get<RecoveryModel>("/api/analytics/recovery", {
+      annual_claim_volume: String(annualClaimVolume),
+      limit: String(limit),
+    }),
 
   ask: (question: string) => api.post<AskResponse>("/api/analytics/ask", { question }),
 };

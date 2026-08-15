@@ -291,6 +291,34 @@ export interface LeakageItem {
   bearer: string;
 }
 
+export interface RecoveryItem {
+  item: string;
+  claims_affected: number;
+  total_written_off: string;
+  incidence_pct: string;
+  avg_per_occurrence: string;
+  leak_per_claim: string;
+  annual_recovery: string;
+  cited_rule: string;
+}
+
+export interface RecoveryModel {
+  empty: boolean;
+  reason?: string;
+  claims_audited: number;
+  months_observed: number;
+  gross_billed: string;
+  recoverable_total: string;
+  leak_per_claim: string;
+  leak_rate_pct: string;
+  annual_claim_volume: number;
+  volume_source: string;
+  annual_recovery: string;
+  top_three_recovery: string;
+  items: RecoveryItem[];
+  assumptions: string[];
+}
+
 export interface TopLeakingItem {
   item: string;
   claims: number;
