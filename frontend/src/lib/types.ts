@@ -303,6 +303,29 @@ export interface MissingDoc {
   claims: number;
 }
 
+// -- Trace --
+
+export interface NodeTrace {
+  node: string;
+  started_at: string;
+  latency_ms: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  llm_calls: number;
+  cache_hits: number;
+  attempts: number;
+  note: string;
+  error: string;
+}
+
+export interface TraceResponse {
+  claim_id: string;
+  tenant: string;
+  nodes: NodeTrace[];
+  total_ms: number;
+  total_tokens: number;
+}
+
 // -- Rule catalog --
 
 export interface RuleChunk {

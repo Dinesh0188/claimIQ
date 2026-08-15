@@ -64,6 +64,16 @@ export function ClaimDetailView({ claimId }: Props) {
           </p>
         </div>
         {claim.ai_pipeline && <Badge variant="success">AI pipeline</Badge>}
+        {claim.audited_at && (
+          <Button
+            variant="secondary"
+            size="sm"
+            className="ml-auto"
+            onClick={() => router.push(`/trace/${claimId}`)}
+          >
+            Trace
+          </Button>
+        )}
       </div>
 
       {/* Figures */}

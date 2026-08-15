@@ -12,6 +12,7 @@ import type {
   RuleCatalog,
   RuleChunk,
   TopLeakingItem,
+  TraceResponse,
 } from "./types";
 import { getApiKey } from "./auth";
 
@@ -140,6 +141,8 @@ export const claimiqApi = {
     api.get<ClaimsListResponse>("/api/claims", params as Record<string, string | number>),
 
   claimDetail: (claimId: string) => api.get<ClaimDetail>(`/api/claims/${claimId}`),
+
+  trace: (claimId: string) => api.get<TraceResponse>(`/api/trace/${encodeURIComponent(claimId)}`),
 
   rule: (chunkId: string) => api.get<RuleChunk>(`/api/rules/${encodeURIComponent(chunkId)}`),
 
