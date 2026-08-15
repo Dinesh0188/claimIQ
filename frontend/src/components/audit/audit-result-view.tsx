@@ -95,7 +95,7 @@ export function AuditResultView({ result, packet, profile }: AuditResultViewProp
       document.body.appendChild(a);
       a.click();
       a.remove();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
       toast("Report downloaded", "success");
     } catch (err) {
       toast(`Report failed: ${(err as Error).message}`, "error");
@@ -105,7 +105,7 @@ export function AuditResultView({ result, packet, profile }: AuditResultViewProp
   return (
     <div className="space-y-4">
       {/* Verdict */}
-      <div className={`card border ${v.css} flex items-start gap-4`}>
+      <div className={`card border ${v.css} flex items-start gap-4 animate-in slide-in-from-bottom-2`}>
         <VerdictIcon size={24} className={v.iconCss} />
         <div>
           <h2 className="font-bold text-lg">{v.title}</h2>
@@ -379,7 +379,7 @@ function FindingsSection({ findings }: { findings: ItemFinding[] }) {
         </p>
       ) : (
         <div className="space-y-1">
-          {findings
+          {[...findings]
             .sort(
               (a, b) =>
                 severityOrder(a.severity) - severityOrder(b.severity) ||

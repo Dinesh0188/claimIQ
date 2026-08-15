@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { claimiqApi } from "@/lib/api";
 import { Spinner } from "@/components/ui/spinner";
 import { Badge } from "@/components/ui/badge";
-import { Search, AlertTriangle } from "lucide-react";
+import { Search, AlertTriangle, BookOpen } from "lucide-react";
 
 const LIST_LABELS: Record<string, string> = {
   LIST_I_OPTIONAL: "List I — Optional (patient pays)",
@@ -84,94 +84,113 @@ export function RulesCatalogView() {
         </div>
       )}
 
-      {/* Filters */}
-      <div className="flex items-center gap-4 flex-wrap">
-        <div className="relative flex-1 max-w-sm">
-          <Search
-            size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-2"
-          />
-          <input
-            type="text"
-            placeholder="Search rules..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-panel-3 border border-line rounded pl-9 pr-3 py-2 text-sm text-white placeholder:text-muted-2 focus:outline-none focus:border-accent"
-          />
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <FilterButton
-            active={activeList === "all"}
-            onClick={() => setActiveList("all")}
-          >
-            All ({catalog.total})
-          </FilterButton>
-          {Object.entries(catalog.counts).map(([key, count]) => (
-            <FilterButton
-              key={key}
-              active={activeList === key}
-              onClick={() => setActiveList(key)}
-            >
-              {key.replace("LIST_", "L").replace(/_/g, " ")} ({count})
-            </FilterButton>
-          ))}
-        </div>
-      </div>
-
-      {/* Rules list */}
-      <div className="space-y-2">
-        {filteredRules.length === 0 ? (
-          <div className="card text-center py-8">
-            <p className="text-muted">
-              No rules match your search.
-            </p>
+      {/* Empty catalog */}
+      {catalog.total === 0 && (
+        <div className="card text-center py-10">
+          <div className="flex justify-center mb-3">
+            <div className="w-12 h-12 rounded-full bg-panel-3 flex items-center justify-center">
+              <BookOpen size={20} className="text-muted" />
+            </div>
           </div>
-        ) : (
-          filteredRules.map((rule) => (
-            <div key={rule.chunk_id} className="card hover:border-line-2 transition-colors">
-              <div className="flex items-start gap-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-mono text-xs text-accent">
-                      {rule.chunk_id}
-                    </span>
-                    <Badge variant="muted">
-                      {LIST_LABELS[rule.list_name || "POLICY_WORDING"]?.split("—")[0]?.trim() ||
-                        rule.list_name}
-                    </Badge>
-                  </div>
-                  <h3 className="font-semibold text-sm">{rule.title}</h3>
-                  <p className="text-sm text-muted mt-1 line-clamp-2">
-                    {rule.body}
-                  </p>
-                  {rule.aliases && rule.aliases.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {rule.aliases.slice(0, 5).map((a, i) => (
-                        <span
-                          key={i}
-                          className="text-xs bg-panel-3 px-1.5 py-0.5 rounded text-muted"
-                        >
-                          {a}
+          <p className="text-muted">The rule catalog is empty.</p>
+          <p className="text-xs text-muted-2 mt-1">
+            No rules are loaded for this corpus — nothing to audit against yet.
+          </p>
+        </div>
+      )}
+
+      {catalog.total > 0 && (
+        <>
+          {/* Filters */}
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="relative flex-1 max-w-sm">
+              <Search
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-2"
+              />
+              <input
+                type="text"
+                placeholder="Search rules..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full bg-panel-3 border border-line rounded pl-9 pr-3 py-2 text-sm text-white placeholder:text-muted-2 focus:outline-none focus:border-accent"
+              />
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <FilterButton
+                active={activeList === "all"}
+                onClick={() => setActiveList("all")}
+              >
+                All ({catalog.total})
+              </FilterButton>
+              {Object.entries(catalog.counts).map(([key, count]) => (
+                <FilterButton
+                  key={key}
+                  active={activeList === key}
+                  onClick={() => setActiveList(key)}
+                >
+                  {key.replace("LIST_", "L").replace(/_/g, " ")} ({count})
+                </FilterButton>
+              ))}
+            </div>
+          </div>
+
+          {/* Rules list */}
+          <div className="space-y-2">
+            {filteredRules.length === 0 ? (
+              <div className="card text-center py-8">
+                <p className="text-muted">
+                  No rules match your search.
+                </p>
+              </div>
+            ) : (
+              filteredRules.map((rule) => (
+                <div key={rule.chunk_id} className="card hover:border-line-2 transition-colors">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-mono text-xs text-accent">
+                          {rule.chunk_id}
                         </span>
-                      ))}
-                      {rule.aliases.length > 5 && (
-                        <span className="text-xs text-muted-2">
-                          +{rule.aliases.length - 5} more
-                        </span>
+                        <Badge variant="muted">
+                          {LIST_LABELS[rule.list_name || "POLICY_WORDING"]?.split("—")[0]?.trim() ||
+                            rule.list_name}
+                        </Badge>
+                      </div>
+                      <h3 className="font-semibold text-sm">{rule.title}</h3>
+                      <p className="text-sm text-muted mt-1 line-clamp-2">
+                        {rule.body}
+                      </p>
+                      {rule.aliases && rule.aliases.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {rule.aliases.slice(0, 5).map((a, i) => (
+                            <span
+                              key={i}
+                              className="text-xs bg-panel-3 px-1.5 py-0.5 rounded text-muted"
+                            >
+                              {a}
+                            </span>
+                          ))}
+                          {rule.aliases.length > 5 && (
+                            <span className="text-xs text-muted-2">
+                              +{rule.aliases.length - 5} more
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
-                  )}
+                  </div>
                 </div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
+              ))
+            )}
+          </div>
 
-      {/* Count */}
-      <p className="text-xs text-muted-2 text-center">
-        Showing {filteredRules.length} of {catalog.total} rules
-      </p>
+          {/* Count */}
+          <p className="text-xs text-muted-2 text-center">
+            Showing {filteredRules.length} of {catalog.total} rules
+          </p>
+        </>
+      )}
     </div>
   );
 }

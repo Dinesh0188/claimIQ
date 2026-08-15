@@ -66,6 +66,12 @@
 @layer components {
   .card {
     @apply bg-panel border border-line rounded-md p-5;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .card:hover {
+    border-color: #2e323c;
+    box-shadow: 0 2px 14px rgba(0, 0, 0, 0.2);
   }
 
   .card-head {

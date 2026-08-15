@@ -180,7 +180,7 @@ export interface ExtractionResult {
   room_stay: RoomStay | null;
   has_implant: boolean;
   room_category: string | null;
-  room_rate_per_day: number | null;
+  room_rate_per_day: string | null;
   room_days: number | null;
   low_confidence: number;
   method: string;

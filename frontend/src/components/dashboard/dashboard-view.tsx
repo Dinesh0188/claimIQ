@@ -5,6 +5,9 @@ import { claimiqApi } from "@/lib/api";
 import { rupees, num } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
 import { Badge } from "@/components/ui/badge";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { LayoutDashboard } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -16,6 +19,7 @@ import {
 } from "recharts";
 
 export function DashboardView() {
+  const router = useRouter();
   const { data: summary, isLoading: loadingSummary } = useQuery({
     queryKey: ["analytics-summary"],
     queryFn: claimiqApi.analyticsSummary,
@@ -49,10 +53,18 @@ export function DashboardView() {
       <div className="max-w-5xl mx-auto">
         <h1 className="text-2xl font-bold mb-2">Leakage Dashboard</h1>
         <div className="card text-center py-12">
-          <p className="text-muted">No claims audited yet.</p>
+          <div className="flex justify-center mb-3">
+            <div className="w-12 h-12 rounded-full bg-panel-3 flex items-center justify-center">
+              <LayoutDashboard size={20} className="text-muted" />
+            </div>
+          </div>
+          <p className="text-muted">No audited claims yet.</p>
           <p className="text-xs text-muted-2 mt-1">
             Audit some claims from the Check a claim page to see portfolio analytics here.
           </p>
+          <Button variant="primary" className="mt-5" onClick={() => router.push("/")}>
+            Check a claim
+          </Button>
         </div>
       </div>
     );

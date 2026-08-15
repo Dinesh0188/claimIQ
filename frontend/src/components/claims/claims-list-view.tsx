@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { claimiqApi } from "@/lib/api";
 import { rupees } from "@/lib/utils";
-import { Search } from "lucide-react";
+import { Search, FileSearch } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -73,12 +73,33 @@ export function ClaimsListView() {
           <Spinner />
         </div>
       ) : !data || data.claims.length === 0 ? (
-        <div className="card text-center py-12">
-          <p className="text-muted">No claims found.</p>
-          <p className="text-xs text-muted-2 mt-1">
-            Run an audit from the Check a claim page to see it here.
-          </p>
-        </div>
+        search || month ? (
+          <div className="card text-center py-12">
+            <p className="text-muted">No claims match your filters.</p>
+            <p className="text-xs text-muted-2 mt-1">
+              {search && month
+                ? "Try a different search or month."
+                : search
+                ? "Try a different search."
+                : "Try a different month."}
+            </p>
+          </div>
+        ) : (
+          <div className="card text-center py-12">
+            <div className="flex justify-center mb-3">
+              <div className="w-12 h-12 rounded-full bg-panel-3 flex items-center justify-center">
+                <FileSearch size={20} className="text-muted" />
+              </div>
+            </div>
+            <p className="text-muted">No audited claims yet.</p>
+            <p className="text-xs text-muted-2 mt-1">
+              Run an audit from the Check a claim page to see it here.
+            </p>
+            <Button variant="primary" className="mt-5" onClick={() => router.push("/")}>
+              Check a claim
+            </Button>
+          </div>
+        )
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
