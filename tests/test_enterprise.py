@@ -478,6 +478,18 @@ def test_a_stacked_statement_is_refused_however_it_is_dressed_up() -> None:
         analytics.validate_sql("SELECT 1 FROM v_claims; DELETE FROM claims")
 
 
+def test_a_comma_join_cannot_reach_the_base_claims_table() -> None:
+    from claimiq.analytics import validate_sql
+    with pytest.raises(ValueError):
+        validate_sql("SELECT * FROM v_claims, claims LIMIT 10")
+
+
+def test_the_base_findings_table_is_forbidden() -> None:
+    from claimiq.analytics import validate_sql
+    with pytest.raises(ValueError):
+        validate_sql("SELECT * FROM v_findings JOIN findings USING(claim_id) LIMIT 10")
+
+
 def test_a_comment_does_not_cause_a_spurious_rejection() -> None:
     """Comments are inert to SQLite but not to a regex reading raw text, so a query
     annotated `-- drop the tiny ones` was refused as containing a forbidden keyword.

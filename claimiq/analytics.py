@@ -183,8 +183,7 @@ Rules:
 # paise and report a figure 100x too large.
 ALLOWED_TABLES = {"v_claims", "v_findings", "doc_gaps"}
 FORBIDDEN = re.compile(
-    r"\b(insert|update|delete|drop|alter|attach|detach|pragma|create|replace|vacuum)\b",
-    re.IGNORECASE,
+    r"(?is)\b(drop|delete|insert|update|alter|create|attach|detach|vacuum|pragma|reindex|replace|claims|findings)\b"
 )
 
 # Rows a generated query may return, and how long it may run. Both are enforced here
@@ -244,9 +243,13 @@ def validate_sql(sql: str) -> str:
         name.lower()
         for name in re.findall(r"(?:\bwith\b|,)\s*([a-zA-Z_]\w*)\s+as\s*\(", probe, re.IGNORECASE)
     }
-    referenced = {
-        t.lower() for t in re.findall(r"\b(?:from|join)\s+([a-zA-Z_][\w]*)", probe, re.IGNORECASE)
-    }
+    referenced = set()
+    for clause in re.findall(
+        r"\b(?:from|join)\s+([a-zA-Z_]\w*(?:\s*,\s*[a-zA-Z_]\w*)*)",
+        probe,
+        re.IGNORECASE,
+    ):
+        referenced.update(t.strip().lower() for t in clause.split(","))
     unknown = referenced - ALLOWED_TABLES - defined
     if unknown:
         raise ValueError(f"unknown table(s): {', '.join(sorted(unknown))}")
