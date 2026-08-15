@@ -26,4 +26,4 @@ if [ -d "$SEED_DIR" ] && [ ! -f "$DATA_DIR/.seeded" ]; then
   echo "Seed complete."
 fi
 
-exec uvicorn claimiq.api:app --host 0.0.0.0 --port "${PORT:-8000}"
+exec uvicorn claimiq.api:app --host "${CLAIMIQ_BIND:-127.0.0.1}" --port "${PORT:-8000}"

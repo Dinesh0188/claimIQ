@@ -79,6 +79,13 @@ class Settings:
     claim_retention_days: int = 365 * 2
     trace_retention_days: int = 90
 
+    # Bind host. Loopback by default so the local demo is never reachable off the
+    # machine; Render sets CLAIMIQ_BIND=0.0.0.0 explicitly.
+    bind_host: str = "127.0.0.1"
+    # Fail-closed: refuse to run a public bind with authentication off unless this
+    # is set. The demo is safe; an open API holding claim data is not.
+    allow_insecure_demo: bool = False
+
     @property
     def has_key(self) -> bool:
         return bool(self.api_key) and not self.api_key.endswith("_here")
@@ -112,4 +119,13 @@ def settings() -> Settings:
         json_logs=_bool("CLAIMIQ_JSON_LOGS", False),
         claim_retention_days=_int("CLAIMIQ_CLAIM_RETENTION_DAYS", 365 * 2),
         trace_retention_days=_int("CLAIMIQ_TRACE_RETENTION_DAYS", 90),
+        bind_host=os.getenv("CLAIMIQ_BIND", "127.0.0.1"),
+        allow_insecure_demo=_bool("CLAIMIQ_ALLOW_INSECURE_DEMO", False),
     )
+
+
+def insecure_deployment() -> bool:
+    """True when the server would bind publicly with auth off — a dangerous posture."""
+    s = settings()
+    loopback = s.bind_host in ("127.0.0.1", "localhost", "::1")
+    return not loopback and not s.api_keys_raw and not s.allow_insecure_demo

@@ -31,10 +31,21 @@ services:
         value: "true"
 
       # --- deployment posture ---
-      # CORS: the exact production frontend origin. Update this to your real Vercel
-      # domain after the first frontend deploy, then add it here.
+      # Public bind: Render's load balancer reaches the app on all interfaces. The
+      # app itself fails closed -- loopback is the default, and a public bind with
+      # authentication off is reported by /health (see CLAIMIQ_ALLOW_INSECURE_DEMO).
+      - key: CLAIMIQ_BIND
+        value: "0.0.0.0"
+      # CLAIMIQ_API_KEYS is REQUIRED for any non-demo deployment. Without keys and
+      # without CLAIMIQ_ALLOW_INSECURE_DEMO, the app refuses to run a public bind
+      # (insecure_deployment() is surfaced in /health). Kept false so the demo posture
+      # stays honest; flip it only for a throwaway portfolio deployment.
+      - key: CLAIMIQ_ALLOW_INSECURE_DEMO
+        value: "false"
+      # CORS: the exact production frontend origin -- the Vercel deployment. Update
+      # this to your real Vercel domain after the first frontend deploy.
       - key: CLAIMIQ_CORS_ORIGINS
-        sync: false
+        value: "https://claimiq.vercel.app"
       # Vercel preview deployments get a new subdomain per branch/PR -- this regex
       # covers all of them without editing an env var on every PR. Replace
       # <your-project> with your actual Vercel project slug.
@@ -42,6 +53,8 @@ services:
         value: "https://<your-project>.*\\.vercel\\.app"
       # Empty = authentication off (fine for a demo/portfolio deployment). Set
       # key:tenant:scopes entries here before pointing this at real claim data.
+      # REQUIRED for any non-demo deployment; without it the app reports
+      # insecure_deployment in /health and refuses a public bind.
       - key: CLAIMIQ_API_KEYS
         sync: false
       - key: CLAIMIQ_RATE_LIMIT_PER_MINUTE

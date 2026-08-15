@@ -403,6 +403,29 @@ def test_auth_is_off_by_default_so_the_bundled_demo_still_runs(client: TestClien
     assert client.get("/health").json()["security"]["auth_enabled"] is False
 
 
+def test_a_public_bind_without_keys_is_reported_insecure(monkeypatch) -> None:
+    from claimiq import config
+    monkeypatch.setattr(config, "settings", lambda: config.Settings(
+        base_url="x", api_key="", model="m", vision_model="v", ai_enabled=False,
+        bind_host="0.0.0.0",
+    ))
+    assert config.insecure_deployment() is True
+
+
+def test_loopback_bind_is_never_insecure(monkeypatch) -> None:
+    from claimiq import config
+    monkeypatch.setattr(config, "settings", lambda: config.Settings(
+        base_url="x", api_key="", model="m", vision_model="v", ai_enabled=False,
+        bind_host="127.0.0.1",
+    ))
+    assert config.insecure_deployment() is False
+
+
+def test_health_reports_insecure_posture_when_unauthenticated(client: TestClient) -> None:
+    body = client.get("/health").json()
+    assert "insecure_deployment" in body["security"]
+
+
 def test_auth_on_rejects_a_missing_key_and_accepts_a_good_one(monkeypatch) -> None:
     key = "k_test_apollo_key_123456"
     monkeypatch.setattr(tenancy, "registry", lambda: registry_for(f"{key}:apollo:read"))

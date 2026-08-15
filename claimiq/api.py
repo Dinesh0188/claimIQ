@@ -44,7 +44,7 @@ from claimiq import (
     tenancy,
     trace,
 )
-from claimiq.config import ROOT, settings
+from claimiq.config import ROOT, insecure_deployment, settings
 from claimiq.graph import audit
 from claimiq.llm import LLMUnavailable, try_client
 from claimiq.nodes.extract import (
@@ -278,7 +278,7 @@ def health() -> dict:
         # Posture, stated rather than assumed. An operator who believes authentication
         # is on when it is not has a worse problem than one who knows it is off, so
         # this is unauthenticated on purpose -- it names no keys and no tenant data.
-        "security": tenancy.describe(),
+        "security": {**tenancy.describe(), "insecure_deployment": insecure_deployment()},
         "ledger_enabled": settings().ledger_enabled,
         "ai_enabled": settings().ai_enabled,
         "key_present": active.usable,
