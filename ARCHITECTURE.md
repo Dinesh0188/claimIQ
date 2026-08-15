@@ -473,5 +473,8 @@ Stated plainly, because the limitations are the honest part:
   [EVALUATION.md](EVALUATION.md) documents.
 - **The insurer profiles are approximations.** Three plausible interpretations of the
   associated-charge list, not any real insurer's rulebook. Hence a range, not a number.
-- **No authentication.** A single-user local tool. Exposing it publicly with real claim data
-  would need auth, tenancy and audit logging, none of which exist.
+- **Auth is off by default, not absent.** Authentication, tenancy and the audit ledger
+  exist and are tested, but only activate when configured — `CLAIMIQ_API_KEYS` enables
+  API-key auth with per-tenant scopes, and the ledger records who asked. Exposing it
+  publicly with real claim data requires the operator to enable them first; a public bind
+  with no keys is flagged `insecure_deployment`.

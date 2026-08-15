@@ -151,7 +151,7 @@ def test_unearned_numbers_are_placeholders_not_guesses(page: str) -> None:
 def test_the_limitations_are_stated_not_buried(page: str) -> None:
     """Procurement asks these. The page must answer them on the page."""
     for claim in (
-        "no authentication",
+        "off in the demo",
         "unverified snapshot",
         "synthetic",
         "Estimates, not adjudications",
