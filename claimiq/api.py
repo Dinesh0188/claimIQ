@@ -324,8 +324,9 @@ def list_samples() -> list[str]:
 
 @app.get("/api/samples/{name}")
 def get_sample(name: str) -> ClaimPacket:
-    path = SAMPLES / f"{name}.json"
-    if not path.is_file():
+    base = SAMPLES.resolve()
+    path = (SAMPLES / f"{name}.json").resolve()
+    if path.suffix != ".json" or not path.is_relative_to(base) or not path.is_file():
         raise HTTPException(404, f"no sample named {name!r}")
     return ClaimPacket.model_validate_json(path.read_text(encoding="utf-8"))
 

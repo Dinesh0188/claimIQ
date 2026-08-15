@@ -208,3 +208,15 @@ def test_samples_on_disk_are_still_valid_packets() -> None:
 
     for path in sorted((ROOT / "data" / "samples").glob("*.json")):
         ClaimPacket.model_validate(json.loads(path.read_text(encoding="utf-8")))
+
+
+def test_sample_names_cannot_escape_the_samples_dir() -> None:
+    from claimiq.api import get_sample
+    from fastapi import HTTPException
+    for name in ("..%2F..%2Fproviders", "../providers", "..\\..\\providers"):
+        try:
+            get_sample(name)
+        except HTTPException as exc:
+            assert exc.status_code in (400, 404)
+        else:
+            raise AssertionError(f"escaping name {name!r} resolved to a file")
