@@ -33,6 +33,7 @@ export function AskView() {
   const submit = (q: string) => {
     const trimmed = q.trim();
     if (!trimmed || mutation.isPending) return;
+    setResult(null);
     mutation.mutate(trimmed);
   };
 
@@ -92,7 +93,7 @@ export function AskView() {
           <Button
             type="submit"
             variant="primary"
-            disabled={mutation.isPending}
+            disabled={!question.trim() || mutation.isPending}
           >
             {mutation.isPending ? (
               <>
