@@ -573,3 +573,28 @@ def test_label_values_are_escaped() -> None:
 def test_the_shared_registry_survives_a_snapshot() -> None:
     METRICS.inc("claimiq_test_total")
     assert "claimiq_test_total" in METRICS.snapshot()["counters"]
+
+
+# --- the LLM cache ---------------------------------------------------------
+
+
+def test_cache_key_changes_when_the_corpus_version_changes(monkeypatch) -> None:
+    from claimiq.llm import _cache_key
+    k1 = _cache_key("m", "s", "u", "S", [])
+    monkeypatch.setattr(
+        "claimiq.llm.corpus_version", lambda: "different-version"
+    )
+    k2 = _cache_key("m", "s", "u", "S", [])
+    assert k1 != k2
+
+
+def test_cache_writes_are_scoped_to_the_corpus_version(monkeypatch, tmp_path) -> None:
+    from claimiq.llm import _cache_key
+    from diskcache import Cache
+    cache = Cache(str(tmp_path / "c"))
+    key = _cache_key("m", "s", "u", "S", [])
+    cache.set(key, "{}", expire=1)
+    assert cache.get(key) == "{}"
+    import time
+    time.sleep(1.2)
+    assert cache.get(key) is None  # expired

@@ -23,10 +23,15 @@ from pydantic import BaseModel, ValidationError
 
 from claimiq.config import ROOT, settings
 from claimiq.providers import Provider, active_provider
+from claimiq.retrieval.corpus import corpus_version
 
 T = TypeVar("T", bound=BaseModel)
 
 _cache = Cache(str(ROOT / ".cache" / "llm"))
+
+# Responses are scoped to the corpus content they were computed against; entries
+# older than a day are stale enough that recomputing is cheaper than trusting them.
+CACHE_TTL = 60 * 60 * 24  # seconds
 
 # A long bill table is a long JSON document. Leaving this to the provider default
 # is what produced "max completion tokens reached before generating a valid
@@ -261,7 +266,7 @@ class LLMClient:
                     attempts=attempt,
                 )
             )
-            _cache.set(key, parsed.model_dump_json())
+            _cache.set(key, parsed.model_dump_json(), expire=CACHE_TTL)
             return parsed
 
         raise LLMUnavailable(f"{schema.__name__} did not validate after {max_retries + 1} attempts: {last_error}")
@@ -334,7 +339,9 @@ def _user_content(text: str, images: list[str] | None) -> Any:
 
 
 def _cache_key(model: str, system: str, user: str, schema: str, images: list[str] | None) -> str:
-    blob = "|".join([model, system, user, schema, *(images or [])])
+    # `corpus_version` is the module-global so a rule-corpus edit invalidates every
+    # key computed under the old rules instead of serving a stale verdict.
+    blob = "|".join([model, system, user, schema, corpus_version(), *(images or [])])
     return hashlib.sha256(blob.encode()).hexdigest()
 
 
