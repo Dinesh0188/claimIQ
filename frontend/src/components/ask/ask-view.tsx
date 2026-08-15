@@ -113,7 +113,7 @@ export function AskView() {
         <div className="flex items-start gap-3 p-3 bg-red-500/5 border border-red-500/20 rounded text-sm text-red-400">
           <AlertTriangle size={16} className="shrink-0 mt-0.5" />
           <div>
-            <strong>The question couldn't be answered — the query was rejected:</strong>{" "}
+            <strong>The question couldn&apos;t be answered — the query was rejected:</strong>{" "}
             <span className="text-muted">{error}</span>
           </div>
         </div>
