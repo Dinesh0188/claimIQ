@@ -21,6 +21,10 @@ export const metadata: Metadata = {
     "Audit Indian hospital claim packets before they go to the TPA. See what the insurer will deduct, what the patient owes, and what your billing master is losing.",
 };
 
+export const viewport = {
+  themeColor: "#0b0c0f",
+};
+
 export default function RootLayout({
   children,
 }: {
@@ -31,6 +35,12 @@ export default function RootLayout({
       <body
         className={`${jakarta.variable} ${jetbrains.variable} font-sans antialiased`}
       >
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:px-4 focus:py-2 focus:bg-accent focus:text-white focus:rounded-md"
+        >
+          Skip to main content
+        </a>
         <Providers>
           <AppShell>
             <ErrorBoundary>{children}</ErrorBoundary>

@@ -17,7 +17,7 @@ import {
   X,
   TrendingUp,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { claimiqApi } from "@/lib/api";
 import { getApiKey, setApiKey, clearApiKey } from "@/lib/auth";
 import type { HealthResponse } from "@/lib/types";
@@ -39,6 +39,53 @@ const NAV_ITEMS = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const drawerRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setSidebarOpen(false);
+        menuButtonRef.current?.focus();
+      }
+      if (e.key === "Tab" && drawerRef.current) {
+        const focusable = drawerRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", handleKey);
+    // focus first element in drawer
+    setTimeout(() => {
+      const firstFocusable = drawerRef.current?.querySelector<HTMLElement>(
+        'a[href], button:not([disabled])'
+      );
+      firstFocusable?.focus();
+    }, 0);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [sidebarOpen]);
+
+  const handleCloseDrawer = () => {
+    setSidebarOpen(false);
+    setTimeout(() => menuButtonRef.current?.focus(), 0);
+  };
 
   const { data: health } = useQuery({
     queryKey: ["health"],
@@ -52,17 +99,32 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/60 z-40 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
+          onClick={handleCloseDrawer}
+          aria-hidden="true"
         />
       )}
 
       {/* Sidebar */}
       <aside
+        ref={drawerRef}
+        role={sidebarOpen ? "dialog" : undefined}
+        aria-modal={sidebarOpen ? true : undefined}
+        aria-label={sidebarOpen ? "Navigation menu" : undefined}
+        aria-hidden={sidebarOpen ? undefined : undefined}
         className={cn(
-          "fixed lg:static inset-y-0 left-0 z-50 w-[232px] bg-panel-2 border-r border-line flex flex-col transition-transform lg:translate-x-0",
+          "fixed lg:static inset-y-0 left-0 z-50 w-[232px] bg-panel-2 border-r border-line flex flex-col transition-transform lg:translate-x-0 overscroll-contain",
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
+        style={{ overscrollBehavior: "contain" } as React.CSSProperties}
       >
+        <button
+          ref={closeButtonRef}
+          onClick={handleCloseDrawer}
+          className="absolute top-3 right-3 p-1.5 rounded-md text-muted hover:text-white hover:bg-panel-3 lg:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          aria-label="Close navigation menu"
+        >
+          <X size={16} aria-hidden="true" />
+        </button>
         {/* Brand */}
         <div className="px-5 py-5 border-b border-line">
           <Link href="/" className="flex items-center gap-2">
@@ -143,18 +205,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Mobile header */}
         <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-panel-2 border-b border-line">
           <button
+            ref={menuButtonRef}
             onClick={() => setSidebarOpen(true)}
-            className="p-2 text-muted hover:text-white"
-            aria-label="Open menu"
+            className="p-2 text-muted hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-md"
+            aria-label="Open navigation menu"
+            aria-expanded={sidebarOpen}
+            aria-controls="mobile-nav-drawer"
           >
-            <Menu size={20} />
+            <Menu size={20} aria-hidden="true" />
           </button>
           <span className="text-sm font-bold">ClaimIQ</span>
           <div className="w-9" />
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-6">
+        <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto p-4 lg:p-6" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
           <ConnectionGuard>{children}</ConnectionGuard>
         </main>
       </div>

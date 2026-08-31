@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
 import { claimiqApi } from "@/lib/api";
 import { rupees } from "@/lib/utils";
 import { Search, FileSearch } from "lucide-react";
@@ -11,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 export function ClaimsListView() {
-  const router = useRouter();
   const [search, setSearch] = useState("");
   const [month, setMonth] = useState("");
   const [page, setPage] = useState(0);
@@ -35,27 +34,44 @@ export function ClaimsListView() {
         <div className="relative flex-1 max-w-sm">
           <Search
             size={14}
+            aria-hidden="true"
             className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-2"
           />
+          <label htmlFor="claim-search" className="sr-only">
+            Search claims
+          </label>
           <input
-            type="text"
-            placeholder="Search by claim ID or diagnosis..."
+            id="claim-search"
+            name="q"
+            type="search"
+            autoComplete="off"
+            spellCheck={false}
+            aria-label="Search claims by ID or diagnosis"
+            placeholder="Search by claim ID or diagnosis…"
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
               setPage(0);
             }}
-            className="w-full bg-panel-3 border border-line rounded pl-9 pr-3 py-2 text-sm text-white placeholder:text-muted-2 focus:outline-none focus:border-accent"
+            className="w-full bg-panel-3 border border-line rounded pl-9 pr-3 py-2 text-sm text-white placeholder:text-muted-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           />
         </div>
         {data?.months && data.months.length > 0 && (
+          <label htmlFor="claim-month-filter" className="sr-only">
+            Filter by month
+          </label>
+        )}
+        {data?.months && data.months.length > 0 && (
           <select
+            id="claim-month-filter"
+            name="month"
+            aria-label="Filter claims by month"
             value={month}
             onChange={(e) => {
               setMonth(e.target.value);
               setPage(0);
             }}
-            className="bg-panel-3 border border-line rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+            className="bg-panel-3 border border-line rounded px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             <option value="">All months</option>
             {data.months.map((m) => (
@@ -95,9 +111,12 @@ export function ClaimsListView() {
             <p className="text-xs text-muted-2 mt-1">
               Run an audit from the Check a claim page to see it here.
             </p>
-            <Button variant="primary" className="mt-5" onClick={() => router.push("/")}>
+            <Link
+              href="/"
+              className="inline-flex items-center justify-center gap-2 font-medium rounded-md bg-accent hover:bg-accent-deep text-white px-4 py-2 text-sm mt-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
               Check a claim
-            </Button>
+            </Link>
           </div>
         )
       ) : (
@@ -118,11 +137,15 @@ export function ClaimsListView() {
               {data.claims.map((claim) => (
                 <tr
                   key={claim.claim_id}
-                  onClick={() => router.push(`/claims/${claim.claim_id}`)}
-                  className="border-b border-line/50 hover:bg-panel-3 cursor-pointer transition-colors"
+                  className="border-b border-line/50 hover:bg-panel-3 transition-colors"
                 >
-                  <td className="py-2.5 px-3 font-mono text-xs text-accent">
-                    {claim.claim_id}
+                  <td className="py-2.5 px-3 font-mono text-xs">
+                    <Link
+                      href={`/claims/${claim.claim_id}`}
+                      className="text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
+                    >
+                      {claim.claim_id}
+                    </Link>
                   </td>
                   <td className="py-2.5 px-3 text-muted text-xs">
                     {claim.audited_at?.slice(0, 10) || claim.month}

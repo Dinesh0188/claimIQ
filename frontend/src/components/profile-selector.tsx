@@ -51,11 +51,16 @@ export function ProfileSelector() {
 
   return (
     <div className="space-y-1">
-      <label className="text-xs text-muted-2 block">Insurer interpretation</label>
+      <label htmlFor="profile-selector" className="text-xs text-muted-2 block">
+        Insurer interpretation
+      </label>
       <select
+        id="profile-selector"
+        name="profile"
+        aria-label="Insurer interpretation profile"
         value={profile}
         onChange={(e) => setProfile(e.target.value)}
-        className="w-full bg-panel-3 border border-line rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-accent"
+        className="w-full bg-panel-3 border border-line rounded px-2 py-1.5 text-xs text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
         {Object.entries(profiles).map(([key, p]) => (
           <option key={key} value={key}>

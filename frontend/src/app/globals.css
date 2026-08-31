@@ -7,15 +7,37 @@
     box-sizing: border-box;
   }
 
+  :root {
+    color-scheme: dark;
+  }
+
   html,
   body {
     height: 100%;
+  }
+
+  html {
+    overscroll-behavior: contain;
   }
 
   body {
     background: #0b0c0f;
     color: #e9ebee;
     -webkit-font-smoothing: antialiased;
+  }
+
+  *:focus-visible {
+    outline: 2px solid #4f7cff;
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 
   /* Scrollbar styling */
@@ -42,6 +64,12 @@
 
   .slide-in-from-bottom-2 {
     --tw-enter-translate-y: 0.5rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-in {
+      animation: none;
+    }
   }
 
   @keyframes animateIn {
