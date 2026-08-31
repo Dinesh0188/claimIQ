@@ -1,25 +1,57 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { claimiqApi } from "@/lib/api";
-import { rupees } from "@/lib/utils";
+import { rupees, formatDate } from "@/lib/utils";
 import { Search, FileSearch } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 export function ClaimsListView() {
-  const [search, setSearch] = useState("");
-  const [month, setMonth] = useState("");
-  const [page, setPage] = useState(0);
+  const router = useRouter();
+  const getInitialParams = () => {
+    if (typeof window === "undefined") return new URLSearchParams();
+    return new URLSearchParams(window.location.search);
+  };
+  const [searchInput, setSearchInput] = useState(() => getInitialParams().get("q") ?? "");
+  const [search, setSearch] = useState(() => getInitialParams().get("q") ?? "");
+  const [month, setMonth] = useState(() => getInitialParams().get("month") ?? "");
+  const [page, setPage] = useState(() => Number(getInitialParams().get("page") ?? "0"));
   const limit = 25;
+
+  // Debounce search input (300ms) before committing to query
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearch(searchInput);
+      setPage(0);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  // Sync state to URL for persistence and back/forward navigation
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (search) params.set("q", search);
+    if (month) params.set("month", month);
+    if (page) params.set("page", String(page));
+    const qs = params.toString();
+    router.replace(`/claims${qs ? `?${qs}` : ""}`, { scroll: false });
+  }, [search, month, page, router]);
+
+  // Reset page when committed search or month changes (via debounce or select)
+  useEffect(() => {
+    // page reset already handled in debounce and onChange; this is for direct setSearch
+  }, []);
 
   const { data, isLoading } = useQuery({
     queryKey: ["claims", search, month, page],
-    queryFn: () =>
-      claimiqApi.claims({ q: search, month, limit, offset: page * limit }),
+    queryFn: ({ signal }) =>
+      // pass AbortSignal so abandoned searches are cancelled
+      claimiqApi.claims({ q: search, month, limit, offset: page * limit }, signal),
   });
 
   return (
@@ -48,11 +80,8 @@ export function ClaimsListView() {
             spellCheck={false}
             aria-label="Search claims by ID or diagnosis"
             placeholder="Search by claim ID or diagnosis…"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(0);
-            }}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="w-full bg-panel-3 border border-line rounded pl-9 pr-3 py-2 text-sm text-white placeholder:text-muted-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           />
         </div>
@@ -147,19 +176,19 @@ export function ClaimsListView() {
                       {claim.claim_id}
                     </Link>
                   </td>
-                  <td className="py-2.5 px-3 text-muted text-xs">
-                    {claim.audited_at?.slice(0, 10) || claim.month}
+                  <td className="py-2.5 px-3 text-muted text-xs tabular-nums">
+                    {claim.audited_at ? formatDate(claim.audited_at) : claim.month}
                   </td>
-                  <td className="py-2.5 px-3 max-w-[200px] truncate">
+                  <td className="py-2.5 px-3 max-w-[200px] truncate min-w-0">
                     {claim.diagnosis || "—"}
                   </td>
-                  <td className="py-2.5 px-3 text-right font-mono">
+                  <td className="py-2.5 px-3 text-right font-mono tabular-nums">
                     {rupees(claim.gross_bill)}
                   </td>
-                  <td className="py-2.5 px-3 text-right font-mono text-settled">
+                  <td className="py-2.5 px-3 text-right font-mono text-settled tabular-nums">
                     {rupees(claim.settlement)}
                   </td>
-                  <td className="py-2.5 px-3 text-right font-mono text-hospital">
+                  <td className="py-2.5 px-3 text-right font-mono text-hospital tabular-nums">
                     {rupees(claim.hospital_writeoff)}
                   </td>
                   <td className="py-2.5 px-3">

@@ -1,41 +1,63 @@
 "use client";
 
+import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { claimiqApi } from "@/lib/api";
-import { rupees, num } from "@/lib/utils";
+import { rupees, num, formatDate } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
 import { Badge } from "@/components/ui/badge";
-import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { LayoutDashboard } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from "recharts";
+
+const DashboardChart = dynamic(
+  () => import("./dashboard-chart").then((m) => m.DashboardChart),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-[300px] flex items-center justify-center">
+        <Spinner />
+      </div>
+    ),
+  }
+);
 
 export function DashboardView() {
-  const router = useRouter();
-  const { data: summary, isLoading: loadingSummary } = useQuery({
+  const {
+    data: summary,
+    isLoading: loadingSummary,
+    isError: errorSummary,
+    refetch: refetchSummary,
+  } = useQuery({
     queryKey: ["analytics-summary"],
     queryFn: claimiqApi.analyticsSummary,
   });
 
-  const { data: leakage } = useQuery({
+  const {
+    data: leakage,
+    isLoading: loadingLeakage,
+    isError: errorLeakage,
+    refetch: refetchLeakage,
+  } = useQuery({
     queryKey: ["analytics-leakage"],
     queryFn: claimiqApi.analyticsLeakage,
   });
 
-  const { data: topItems } = useQuery({
+  const {
+    data: topItems,
+    isLoading: loadingTop,
+    isError: errorTop,
+    refetch: refetchTop,
+  } = useQuery({
     queryKey: ["analytics-top-items"],
     queryFn: () => claimiqApi.analyticsTopItems(10),
   });
 
-  const { data: missingDocs } = useQuery({
+  const {
+    data: missingDocs,
+    isLoading: loadingDocs,
+    isError: errorDocs,
+    refetch: refetchDocs,
+  } = useQuery({
     queryKey: ["analytics-missing-docs"],
     queryFn: () => claimiqApi.analyticsMissingDocs(10),
   });
@@ -48,6 +70,23 @@ export function DashboardView() {
     );
   }
 
+  if (errorSummary) {
+    return (
+      <div className="max-w-5xl mx-auto space-y-4">
+        <h1 className="text-2xl font-bold">Leakage Dashboard</h1>
+        <div className="card text-center py-8">
+          <p className="text-red-400">Failed to load summary. Please retry.</p>
+          <button
+            onClick={() => refetchSummary()}
+            className="mt-4 px-4 py-2 bg-accent text-white rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            Retry Connection
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!summary || summary.empty) {
     return (
       <div className="max-w-5xl mx-auto">
@@ -55,16 +94,19 @@ export function DashboardView() {
         <div className="card text-center py-12">
           <div className="flex justify-center mb-3">
             <div className="w-12 h-12 rounded-full bg-panel-3 flex items-center justify-center">
-              <LayoutDashboard size={20} className="text-muted" />
+              <LayoutDashboard size={20} className="text-muted" aria-hidden="true" />
             </div>
           </div>
           <p className="text-muted">No audited claims yet.</p>
           <p className="text-xs text-muted-2 mt-1">
             Audit some claims from the Check a claim page to see portfolio analytics here.
           </p>
-          <Button variant="primary" className="mt-5" onClick={() => router.push("/")}>
-            Check a claim
-          </Button>
+          <Link
+            href="/"
+            className="inline-flex mt-5 px-4 py-2 bg-accent text-white rounded-md text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            Check a Claim
+          </Link>
         </div>
       </div>
     );
@@ -123,85 +165,67 @@ export function DashboardView() {
         />
       </div>
 
-      {/* Leakage chart */}
-      {leakage && leakage.length > 0 && (
-        <div className="card">
-          <h2 className="text-sm font-semibold mb-4">Leakage by cause</h2>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={leakage}
-                layout="vertical"
-                margin={{ left: 180, right: 30, top: 10, bottom: 10 }}
-              >
-                <XAxis
-                  type="number"
-                  tick={{ fill: "#9aa1ac", fontSize: 11 }}
-                  tickFormatter={(v) => `₹${Math.round(v / 1000)}k`}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="cause"
-                  tick={{ fill: "#9aa1ac", fontSize: 11 }}
-                  width={170}
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: "#14161b",
-                    border: "1px solid #23262e",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                  }}
-                  formatter={(value: number) => [rupees(value), "Amount"]}
-                />
-                <Bar dataKey="amount" radius={[0, 4, 4, 0]}>
-                  {leakage.map((entry, i) => (
-                    <Cell
-                      key={i}
-                      fill={entry.bearer === "HOSPITAL" ? "#ff5c5c" : "#5aa9ff"}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+      {/* Leakage chart - independent section with loading/error */}
+      <div className="card">
+        <h2 className="text-sm font-semibold mb-4">Leakage by Cause</h2>
+        {loadingLeakage ? (
+          <div className="h-[300px] flex items-center justify-center">
+            <Spinner />
           </div>
-          <div className="flex items-center gap-4 mt-3 text-xs text-muted">
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm bg-hospital" /> Hospital absorbs
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm bg-patient" /> Patient pays
-            </span>
+        ) : errorLeakage ? (
+          <div className="text-center py-8">
+            <p className="text-sm text-red-400">Failed to load leakage chart.</p>
+            <button
+              onClick={() => refetchLeakage()}
+              className="mt-3 px-3 py-1.5 bg-panel-3 border border-line rounded text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              Retry
+            </button>
           </div>
-        </div>
-      )}
+        ) : leakage && leakage.length > 0 ? (
+          <DashboardChart data={leakage} />
+        ) : (
+          <p className="text-sm text-muted-2">No leakage data yet.</p>
+        )}
+      </div>
 
-      {/* Top leaking items */}
-      {topItems && topItems.length > 0 && (
-        <div className="card">
-          <h2 className="text-sm font-semibold mb-4">
-            Top billing errors (hospital loss)
-          </h2>
+      {/* Top leaking items - section with independent state */}
+      <div className="card">
+        <h2 className="text-sm font-semibold mb-4">Top Billing Errors (Hospital Loss)</h2>
+        {loadingTop ? (
+          <div className="flex justify-center py-6">
+            <Spinner />
+          </div>
+        ) : errorTop ? (
+          <div className="text-center py-6">
+            <p className="text-sm text-red-400">Failed to load top items.</p>
+            <button
+              onClick={() => refetchTop()}
+              className="mt-3 px-3 py-1.5 bg-panel-3 border border-line rounded text-xs"
+            >
+              Retry
+            </button>
+          </div>
+        ) : topItems && topItems.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line text-muted-2 text-left text-xs">
-                  <th className="py-2 px-3">Item</th>
-                  <th className="py-2 px-3 text-right">Claims</th>
-                  <th className="py-2 px-3 text-right">Total deducted</th>
+                  <th className="py-2 px-3 min-w-[160px]">Item</th>
+                  <th className="py-2 px-3 text-right tabular-nums">Claims</th>
+                  <th className="py-2 px-3 text-right tabular-nums">Total Deducted</th>
                 </tr>
               </thead>
               <tbody>
                 {topItems.map((item, i) => (
-                  <tr
-                    key={i}
-                    className="border-b border-line/50 hover:bg-panel-3"
-                  >
-                    <td className="py-2.5 px-3 capitalize">{item.item}</td>
-                    <td className="py-2.5 px-3 text-right text-muted">
+                  <tr key={i} className="border-b border-line/50 hover:bg-panel-3">
+                    <td className="py-2.5 px-3 capitalize min-w-0 max-w-[240px] truncate">
+                      {item.item}
+                    </td>
+                    <td className="py-2.5 px-3 text-right text-muted tabular-nums">
                       {item.claims}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono text-hospital">
+                    <td className="py-2.5 px-3 text-right font-mono text-hospital tabular-nums">
                       {rupees(item.total_deducted)}
                     </td>
                   </tr>
@@ -209,45 +233,56 @@ export function DashboardView() {
               </tbody>
             </table>
           </div>
-        </div>
-      )}
+        ) : (
+          <p className="text-sm text-muted-2">No billing errors yet.</p>
+        )}
+      </div>
 
-      {/* Missing documents */}
-      {missingDocs && missingDocs.length > 0 && (
-        <div className="card">
-          <h2 className="text-sm font-semibold mb-4">
-            Most-missed documents
-          </h2>
+      {/* Missing documents - independent */}
+      <div className="card">
+        <h2 className="text-sm font-semibold mb-4">Most-Missed Documents</h2>
+        {loadingDocs ? (
+          <div className="flex justify-center py-6">
+            <Spinner />
+          </div>
+        ) : errorDocs ? (
+          <div className="text-center py-6">
+            <p className="text-sm text-red-400">Failed to load missing documents.</p>
+            <button
+              onClick={() => refetchDocs()}
+              className="mt-3 px-3 py-1.5 bg-panel-3 border border-line rounded text-xs"
+            >
+              Retry
+            </button>
+          </div>
+        ) : missingDocs && missingDocs.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line text-muted-2 text-left text-xs">
-                  <th className="py-2 px-3">Document</th>
+                  <th className="py-2 px-3 min-w-[160px]">Document</th>
                   <th className="py-2 px-3">Severity</th>
-                  <th className="py-2 px-3 text-right">Claims affected</th>
+                  <th className="py-2 px-3 text-right tabular-nums">Claims Affected</th>
                 </tr>
               </thead>
               <tbody>
                 {missingDocs.map((doc, i) => (
-                  <tr
-                    key={i}
-                    className="border-b border-line/50 hover:bg-panel-3"
-                  >
-                    <td className="py-2.5 px-3">{doc.name}</td>
+                  <tr key={i} className="border-b border-line/50 hover:bg-panel-3">
+                    <td className="py-2.5 px-3 min-w-0 max-w-[240px] truncate">{doc.name}</td>
                     <td className="py-2.5 px-3">
                       <Badge
                         variant={
                           doc.severity === "BLOCKER"
                             ? "blocker"
                             : doc.severity === "WARNING"
-                            ? "warning"
-                            : "info"
+                              ? "warning"
+                              : "info"
                         }
                       >
                         {doc.severity}
                       </Badge>
                     </td>
-                    <td className="py-2.5 px-3 text-right text-muted">
+                    <td className="py-2.5 px-3 text-right text-muted tabular-nums">
                       {doc.claims}
                     </td>
                   </tr>
@@ -255,8 +290,10 @@ export function DashboardView() {
               </tbody>
             </table>
           </div>
-        </div>
-      )}
+        ) : (
+          <p className="text-sm text-muted-2">No missing document data yet.</p>
+        )}
+      </div>
     </div>
   );
 }

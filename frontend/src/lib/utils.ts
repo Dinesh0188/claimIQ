@@ -5,25 +5,52 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+const INR_FORMATTER = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
+  maximumFractionDigits: 0,
+  minimumFractionDigits: 0,
+});
+
+const COUNT_FORMATTER = new Intl.NumberFormat("en-IN");
+const PERCENT_FORMATTER = new Intl.NumberFormat("en-IN", {
+  style: "percent",
+  maximumFractionDigits: 1,
+});
+
 /**
  * Format a number/string as Indian rupees: ₹1,23,456
+ * Uses Intl.NumberFormat for locale-aware grouping.
  */
 export function rupees(value: string | number | null | undefined): string {
   if (value == null || value === "") return "—";
-  const num = typeof value === "string" ? parseFloat(value) : value;
-  if (isNaN(num)) return "—";
+  const n = typeof value === "string" ? parseFloat(value) : value;
+  if (isNaN(n)) return "—";
+  // Intl already handles negative sign and grouping
+  return INR_FORMATTER.format(Math.round(n));
+}
 
-  const abs = Math.abs(Math.round(num));
-  const sign = num < 0 ? "-" : "";
+export function formatCount(value: number): string {
+  return COUNT_FORMATTER.format(value);
+}
 
-  // Indian number system: last 3 digits, then groups of 2
-  const str = abs.toString();
-  if (str.length <= 3) return `${sign}₹${str}`;
+export function formatPercent(value: number): string {
+  // value is 0-100, convert to 0-1 for percent formatter or just format manually
+  return `${COUNT_FORMATTER.format(Number(value.toFixed(1)))}%`;
+}
 
-  const last3 = str.slice(-3);
-  const rest = str.slice(0, -3);
-  const grouped = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ",");
-  return `${sign}₹${grouped},${last3}`;
+export function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) {
+    // fallback to slicing if not a valid date, but avoid showing raw slice elsewhere
+    return iso.slice(0, 10);
+  }
+  return new Intl.DateTimeFormat("en-IN", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(d);
 }
 
 /**

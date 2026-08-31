@@ -77,7 +77,11 @@ async function unwrap<T>(res: Response): Promise<T> {
 }
 
 export const api = {
-  async get<T>(path: string, params: Record<string, string | number | boolean> = {}): Promise<T> {
+  async get<T>(
+    path: string,
+    params: Record<string, string | number | boolean> = {},
+    opts: { signal?: AbortSignal } = {}
+  ): Promise<T> {
     const qs = new URLSearchParams(
       Object.entries(params)
         .filter(([, v]) => v !== "" && v != null)
@@ -85,27 +89,35 @@ export const api = {
     ).toString();
     const res = await fetch(`${BASE}${path}${qs ? `?${qs}` : ""}`, {
       headers: authHeaders(),
+      signal: opts.signal,
     });
     return unwrap<T>(res);
   },
 
-  async post<T>(path: string, payload?: unknown, params: Record<string, string> = {}): Promise<T> {
+  async post<T>(
+    path: string,
+    payload?: unknown,
+    params: Record<string, string> = {},
+    opts: { signal?: AbortSignal } = {}
+  ): Promise<T> {
     const qs = new URLSearchParams(params).toString();
     const res = await fetch(`${BASE}${path}${qs ? `?${qs}` : ""}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify(payload ?? {}),
+      signal: opts.signal,
     });
     return unwrap<T>(res);
   },
 
-  async upload<T>(path: string, file: File): Promise<T> {
+  async upload<T>(path: string, file: File, opts: { signal?: AbortSignal } = {}): Promise<T> {
     const form = new FormData();
     form.append("file", file, file.name);
     const res = await fetch(`${BASE}${path}`, {
       method: "POST",
       headers: authHeaders(),
       body: form,
+      signal: opts.signal,
     });
     return unwrap<T>(res);
   },
@@ -145,8 +157,10 @@ export const claimiqApi = {
   report: (packet: ClaimPacket, profile: string) =>
     api.pdf("/api/report", packet, { profile }),
 
-  claims: (params: { q?: string; month?: string; limit?: number; offset?: number } = {}) =>
-    api.get<ClaimsListResponse>("/api/claims", params as Record<string, string | number>),
+  claims: (
+    params: { q?: string; month?: string; limit?: number; offset?: number } = {},
+    signal?: AbortSignal
+  ) => api.get<ClaimsListResponse>("/api/claims", params as Record<string, string | number>, { signal }),
 
   claimDetail: (claimId: string) => api.get<ClaimDetail>(`/api/claims/${claimId}`),
 
