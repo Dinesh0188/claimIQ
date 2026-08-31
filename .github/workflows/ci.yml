@@ -16,6 +16,9 @@ jobs:
       - name: Install backend deps
         run: |
           pip install -r requirements.txt -r requirements-api.txt
+          pip install ruff
+      - name: Ruff
+        run: python -m ruff check claimiq tests scripts ui
       - name: Run backend tests
         run: AI_ENABLED=false python -m pytest -q
 
@@ -33,9 +36,19 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install frontend deps
         run: npm ci
+      - name: Lint
+        run: npm run lint
       - name: Typecheck
         run: npm run typecheck
       - name: Test
         run: npm test
+      - name: Accessibility (vitest axe)
+        run: npm test -- src/components/__tests__/a11y.test.tsx
       - name: Build
         run: npm run build
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - name: Playwright smoke
+        run: npx playwright test --reporter=list
+        env:
+          CI: true

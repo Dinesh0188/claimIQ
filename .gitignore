@@ -15,3 +15,10 @@ data/ledger.db-shm
 data/claimiq.db-wal
 data/claimiq.db-shm
 .pytest_cache/
+frontend/.env.local
+frontend/.env
+frontend/node_modules/
+frontend/.next/
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/

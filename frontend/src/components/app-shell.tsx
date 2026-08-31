@@ -232,7 +232,12 @@ function ApiKeyControl({ health }: { health: HealthResponse }) {
   const [value, setValue] = useState("");
   const queryClient = useQueryClient();
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ["health"] });
+  const refresh = () => {
+    queryClient.invalidateQueries();
+    // clear any cached authenticated data when key changes
+    queryClient.removeQueries({ queryKey: ["claims"] });
+    queryClient.removeQueries({ queryKey: ["analytics-summary"] });
+  };
 
   const handleOpenChange = (next: boolean) => {
     if (next) setValue(getApiKey() ?? "");

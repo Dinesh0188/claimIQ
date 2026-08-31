@@ -179,21 +179,23 @@ Full write-up, stack rationale, challenges and interview prep:
 
 ## Screens
 
-The React frontend (`frontend/`, `http://localhost:3000`) is the primary UI:
+The React frontend (`frontend/`, `http://localhost:3000`, Next.js 15.5.24 / React 19) is the primary UI — 11 routes:
 
 | Screen | Route | What it shows |
 |---|---|---|
 | **Check a claim** | `/` | Upload or pick a sample, verdict banner, waterfall from gross bill to settlement, line-item findings with citations, missing documents, narrative + action list, PDF export |
-| **Claims** | `/claims` | Searchable, paginated history of every audited claim |
-| **Claim detail** | `/claims/{id}` | The persisted audit for one claim — figures, findings, document gaps |
-| **Leakage Dashboard** | `/dashboard` | Portfolio leakage: preventable loss by cause, top 10 billing mistakes, most-missed documents |
+| **Claims** | `/claims` | Searchable, paginated history — debounced search, month filter, pagination persisted in URL, tabular numerals |
+| **Claim detail** | `/claims/{id}` | Persisted audit for one claim — figures, findings, document gaps (direct link) |
+| **Leakage Dashboard** | `/dashboard` | Portfolio leakage: preventable loss by cause (dynamic chart + accessible table), top 10 billing mistakes, most-missed documents — independent loading/error/retry per section |
 | **Rule catalog** | `/rules` | All 104 corpus chunks, searchable, with the "unverified snapshot" banner |
+| **Ask** | `/ask` | Natural-language portfolio questions → validated read-only SQL (offline fixture when AI disabled) |
+| **Recovery** | `/recovery` | Recovery modelling from leakage |
+| **Batches** | `/batches` | Batch list with progress, list/detail links |
+| **Batch detail** | `/batches/{jobId}` | Single batch status + cancellation |
+| **Trace** | `/trace/{claimId}` | Execution trace per claim |
+| **Not found** | `/_not-found` | 404 handler |
 
-The legacy Streamlit UI (`.\start.ps1 -Streamlit`, `:8501`) additionally has **Trace**
-(each node's latency, tokens, cache hits, and the repair loop firing) and **Ask**
-(plain-English questions → validated read-only SQL over the portfolio) — both still
-work against the same API (`GET /api/trace/{claim_id}`, `POST /api/analytics/ask`), the
-React frontend just doesn't have screens for them yet.
+All 11 routes are statically or dynamically rendered and verified by the production build.
 
 ---
 
@@ -253,13 +255,13 @@ Stated plainly, because this touches medical billing:
 ## Tests
 
 ```bash
-python -m pytest -q
+AI_ENABLED=false .\.venv\Scripts\python.exe -m pytest -q   # backend: 245 tests, ~15s
+# frontend
+cd frontend; npm run lint; npm run typecheck; npm test      # 17 tests (unit + a11y), build
+npx playwright test                                           # smoke (offline fixtures)
 ```
 
-230 tests, ~15s, no API key needed — the suite forces `AI_ENABLED=false` so it is
-offline and deterministic. (The number has grown since the original 59 as the
-operational layer — idempotency, retention, webhooks, ledger, batches — was added;
-see [ENTERPRISE.md](ENTERPRISE.md).)
+Backend and frontend both run offline with `AI_ENABLED=false` and synthetic data. CI (GitHub Actions, `main`) gates Ruff, backend tests, lint, typecheck, unit/a11y tests, production build, and Playwright smoke.
 
 ## Documentation
 
