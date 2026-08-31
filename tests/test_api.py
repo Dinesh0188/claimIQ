@@ -244,8 +244,9 @@ def test_samples_on_disk_are_still_valid_packets() -> None:
 
 
 def test_sample_names_cannot_escape_the_samples_dir() -> None:
-    from claimiq.api import get_sample
     from fastapi import HTTPException
+
+    from claimiq.api import get_sample
     for name in ("..%2F..%2Fproviders", "../providers", "..\\..\\providers"):
         try:
             get_sample(name)

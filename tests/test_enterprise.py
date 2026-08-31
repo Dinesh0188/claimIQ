@@ -612,8 +612,9 @@ def test_cache_key_changes_when_the_corpus_version_changes(monkeypatch) -> None:
 
 
 def test_cache_writes_are_scoped_to_the_corpus_version(monkeypatch, tmp_path) -> None:
-    from claimiq.llm import _cache_key
     from diskcache import Cache
+
+    from claimiq.llm import _cache_key
     cache = Cache(str(tmp_path / "c"))
     key = _cache_key("m", "s", "u", "S", [])
     cache.set(key, "{}", expire=1)
