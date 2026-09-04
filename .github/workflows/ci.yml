@@ -15,8 +15,8 @@ jobs:
           python-version: "3.12"
       - name: Install backend deps
         run: |
-          pip install -r requirements.txt -r requirements-api.txt
-          pip install ruff
+          pip install -r requirements-api.txt
+          pip install pytest ruff
       - name: Ruff
         run: python -m ruff check claimiq tests scripts ui
       - name: Run backend tests

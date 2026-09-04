@@ -15,6 +15,7 @@ openai>=1.40
 
 # --- api ---
 fastapi>=0.111
+python-multipart>=0.0.9
 uvicorn[standard]>=0.30
 pandas>=2.2
 requests>=2.32

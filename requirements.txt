@@ -5,6 +5,7 @@ openai>=1.40
 
 # --- api + ui ---
 fastapi>=0.111
+python-multipart>=0.0.9
 uvicorn[standard]>=0.30
 streamlit>=1.36
 plotly>=5.22
